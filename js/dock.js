@@ -74,10 +74,18 @@
   }
 
   function legend(items) {
-    return '<div class="legend">' + items.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join('') + '</div>';
+    return '<div class="legend">' + items.map(([c, t]) => (c === 'dash' ? `<span><i class="dash"></i>${t}</span>` : `<span><i style="background:${c}"></i>${t}</span>`)).join('') + '</div>';
   }
 
-  function ro(k, v) { return `<div class="ro"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
+  function ro(k, v, stack) { return `<div class="ro${stack ? ' stack' : ''}"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
+
+  const DESC = {
+    time: 'Deslocamento da massa observada em relação ao equilíbrio estático, nos últimos 10 s.',
+    energy: 'Energias do sistema. A linha tracejada soma tudo e deve ficar horizontal: é a prova de que a integração conserva energia.',
+    fft: 'Amplitude de cada frequência presente na resposta (FFT com janela de Hann). As linhas verticais são as frequências naturais.',
+    phase: 'Velocidade × deslocamento. Elipse fechada: oscilação sem perdas; espiral para dentro: amortecimento; laço estável: regime forçado.',
+    frf: 'Amplitude em regime permanente da massa observada para cada frequência de excitação (escalas logarítmicas).',
+  };
 
   function dominant() {
     // espectro calculado periodicamente para a leitura de frequência dominante
@@ -142,13 +150,13 @@
     const C = V.chartColors(), th = V.render.theme.c;
     const n = node(), d = dofs(), r = ref();
     const roEl = document.getElementById('readouts');
-    document.getElementById('dockObserved').textContent = n ? `observando ${n.name}` : '';
+    document.getElementById('dockObserved').innerHTML = n && !n.fixed ? `massa observada <b>${n.name}</b>` : '';
     if (!n || n.fixed) {
       chart.draw({ empty: 'Selecione uma massa para observar sua resposta.' });
       roEl.innerHTML = '';
       return;
     }
-    let html = '';
+    let html = '', leg = '', vals = '';
     const latest = (rec.head - 1 + CAP) % CAP;
     const cTime = windowCount(WINDOW);
     const tEnd = rec.n ? rec.t[latest] : 0;
@@ -157,12 +165,12 @@
 
     if (tab === 'time') {
       const ts = series(rec.t, cTime);
-      const ser = [], leg = [];
+      const ser = [], items = [];
       let m = 0.1;
-      if (d.x) { const s = series(rec.x, cTime, r.x, 1000); m = Math.max(m, sym(s, 0)); ser.push({ x: ts, y: s, color: C[0], width: 1.8 }); leg.push([C[0], 'uₓ — desloc. em x']); }
-      if (d.y) { const s = series(rec.y, cTime, r.y, 1000); m = Math.max(m, sym(s, 0)); ser.push({ x: ts, y: s, color: C[1], width: 1.8 }); leg.push([C[1], 'u_y — desloc. em y']); }
+      if (d.x) { const s = series(rec.x, cTime, r.x, 1000); m = Math.max(m, sym(s, 0)); ser.push({ x: ts, y: s, color: C[0], width: 1.8 }); items.push([C[0], 'uₓ — desloc. em x']); }
+      if (d.y) { const s = series(rec.y, cTime, r.y, 1000); m = Math.max(m, sym(s, 0)); ser.push({ x: ts, y: s, color: C[1], width: 1.8 }); items.push([C[1], 'u_y — desloc. em y']); }
       chart.draw(rec.n < 2 ? { empty: 'Execute a simulação para registrar a resposta.' } : { x: cfgX, y: { min: -m, max: m, label: 'u [mm]' }, series: ser });
-      html += legend(leg);
+      leg += legend(items);
     } else if (tab === 'energy') {
       const ts = series(rec.t, cTime);
       const Veq = V.app.modal.Veq;
@@ -182,9 +190,9 @@
           { x: ts, y: bal, color: th.ink, width: 2.2, dash: [6, 4] },
         ],
       });
-      html += legend([[C[0], 'cinética T'], [C[2], 'potencial V (rel. equilíbrio)'], [C[3], 'dissipada (acum.)'], [C[1], 'trabalho externo (acum.)'], [th.ink, 'T + V + dissipada − trabalho']]);
+      leg += legend([[C[0], 'cinética T'], [C[2], 'potencial V'], [C[3], 'dissipada (acumulada)'], [C[1], 'trabalho externo'], ['dash', 'balanço T + V + D − W']]);
       const e = V.app.engine;
-      html += ro('erro do balanço', fmt(e.energyErr, 2));
+      vals += ro('erro do balanço', fmt(e.energyErr, 2));
     } else if (tab === 'fft') {
       const F = dominant();
       if (!F) chart.draw({ empty: 'Aguardando ao menos 1,3 s de resposta para o espectro.' });
@@ -202,10 +210,10 @@
           ser.push({ x: F.f, y: a, color: c, width: 1.6, fill: V.chartAlpha(key === 'x' ? 's1' : 's2', 0.12) });
         }
         chart.draw({ x: { min: 0, max: fmax, label: 'f [Hz]' }, y: { min: 0, max: top * 1.15, label: 'amplitude [mm]' }, series: ser, vlines: modalLines(fmax) });
-        html += legend(ser.map((s, i) => [s.color, i === 0 && d.x ? 'espectro de uₓ' : 'espectro de u_y']));
-        html += ro('pico', `${fmt(F.peakF, 3)} Hz`);
-        html += ro('resolução Δf', `${fmt(F.df, 2)} Hz`);
-        html += ro('janela', `${fmt(F.N * V.app.engine.sampleDt, 3)} s · Hann`);
+        leg += legend(ser.map((s, i) => [s.color, i === 0 && d.x ? 'espectro de uₓ' : 'espectro de u_y']));
+        vals += ro('pico', `${fmt(F.peakF, 3)} Hz`);
+        vals += ro('resolução Δf', `${fmt(F.df, 2)} Hz`);
+        vals += ro('janela', `${fmt(F.N * V.app.engine.sampleDt, 3)} s · Hann`);
       }
     } else if (tab === 'phase') {
       const key = d.x && (!d.y || amplitude('x', 3) >= amplitude('y', 3)) ? 'x' : 'y';
@@ -217,8 +225,8 @@
         series: [{ x: u, y: v, color: C[0], width: 1.4 }],
         points: cTime ? [{ x: u[cTime - 1], y: v[cTime - 1], color: C[1], r: 5 }] : [],
       });
-      html += legend([[C[0], `trajetória (${key}, últimos ${WINDOW} s)`], [C[1], 'estado atual']]);
-      html += '<p class="muted" style="margin:0">Elipse fechada: oscilação livre sem perdas. Espiral para dentro: amortecimento. Ciclo limite: regime forçado.</p>';
+      leg += legend([[C[0], `trajetória (${key}, últimos ${WINDOW} s)`], [C[1], 'estado atual']]);
+      
     } else if (tab === 'frf') {
       const res = getFrf();
       if (!res) chart.draw({ empty: V.app.modal.an ? 'Calculando…' : 'Sem análise disponível para este sistema.' });
@@ -253,28 +261,32 @@
             vlines: modalLines(fmaxPlot).concat(res.excFreq ? [{ x: res.excFreq, color: th.ink, dash: [2, 3], label: 'excitação', row: 2 }] : []),
             points: pts,
           });
-          html += legend(ser.map((s, i) => [s.color, (res.ax && i === 0) ? '|X| em x' : '|X| em y']));
-          html += ro('entrada', res.input);
-          html += ro('método', res.method === 'direct' ? 'solução complexa direta' : 'superposição modal');
+          leg += legend(ser.map((s, i) => [s.color, (res.ax && i === 0) ? '|X| em x' : '|X| em y']));
+          vals += ro('entrada', res.input, true);
+          vals += ro('método', res.method === 'direct' ? 'solução direta' : 'superposição modal');
           if (res.excFreq) {
             const key = res.ax ? 'ax' : 'ay';
             let bi = 0;
             for (let i = 1; i < res.f.length; i++) if (Math.abs(res.f[i] - res.excFreq) < Math.abs(res.f[bi] - res.excFreq)) bi = i;
             measured = amplitude(key === 'ax' ? 'x' : 'y', Math.max(3, 3 / res.excFreq));
-            html += ro('previsto em regime', `${fmt(res[key][bi] * 1000, 3)} mm`);
-            html += ro('medido (últimos 3 s)', `${fmt(measured * 1000, 3)} mm`);
+            vals += ro('previsto em regime', `${fmt(res[key][bi] * 1000, 3)} mm`);
+            vals += ro('medido (últimos 3 s)', `${fmt(measured * 1000, 3)} mm`);
           }
         }
       }
     }
 
     // leituras comuns
-    html += '<div class="ro-title">Massa ' + n.name + '</div>';
+    html += `<p class="ro-desc">${DESC[tab]}</p>`;
+    if (leg) html += `<div class="ro-block">${leg}</div>`;
+    if (vals) html += `<div class="ro-block">${vals}</div>`;
+    html += '<div class="ro-block"><span class="ro-title">Agora · ' + n.name + '</span>';
     if (d.x) html += ro('uₓ', `${V.fixed((n.x - r.x) * 1000, 2)} mm`);
     if (d.y) html += ro('u_y', `${V.fixed((n.y - r.y) * 1000, 2)} mm`);
     html += ro('|v|', `${V.fixed(Math.hypot(n.vx, n.vy), 3)} m/s`);
     const F = tab === 'fft' ? fftCache : dominant();
     if (F && F.peak > 1e-3) html += ro('freq. dominante', `${fmt(F.peakF, 3)} Hz`);
+    html += '</div>';
     roEl.innerHTML = html;
   }
 

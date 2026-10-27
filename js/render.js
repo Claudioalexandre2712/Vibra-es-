@@ -167,45 +167,33 @@
     ctx.stroke();
   }
 
+  /* Amortecedor: cilindro de tamanho limitado no meio do elemento;
+   * o êmbolo acompanha a variação de comprimento. */
   function drawDamper(ctx, ax, ay, bx, by, Lref, hw) {
     const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
     if (L < 1) return;
     const ux = dx / L, uy = dy / L, px = -uy, py = ux;
-    Lref = Math.max(Lref, 24);
-    const s1 = Math.min(0.22 * Lref, L * 0.3), s2 = s1 + 0.45 * Lref;
-    const sp = Math.max(s1 + 3, Math.min(L - 4, L - 0.42 * Lref));
+    Lref = Math.max(Lref, 30);
+    const cl = Math.max(18, Math.min(44, 0.4 * Lref));
+    const s1 = Math.max(4, Math.min((Lref - cl) / 2, L * 0.35));
+    const s2 = s1 + cl;
+    const rod = Lref - ((Lref - cl) / 2 + 0.55 * cl);
+    const sp = Math.max(s1 + 3, Math.min(L - 3, s2 + 0.3 * cl, L - rod));
     const P = (s, o) => [ax + ux * s + px * o, ay + uy * s + py * o];
-    ctx.beginPath();
-    let p = P(0, 0); ctx.moveTo(p[0], p[1]);
-    p = P(s1, 0); ctx.lineTo(p[0], p[1]);
-    ctx.stroke();
-    // fluido
+    const line = (pts) => { ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.stroke(); };
+    line([P(0, 0), P(s1, 0)]);
     ctx.save();
-    ctx.fillStyle = alpha('compression', 0.10);
+    ctx.fillStyle = alpha('compression', 0.12);
     ctx.beginPath();
-    let q = P(s1, -hw); ctx.moveTo(q[0], q[1]);
-    q = P(Math.min(sp, s2), -hw); ctx.lineTo(q[0], q[1]);
-    q = P(Math.min(sp, s2), hw); ctx.lineTo(q[0], q[1]);
-    q = P(s1, hw); ctx.lineTo(q[0], q[1]);
+    [P(s1, -hw), P(Math.min(sp, s2), -hw), P(Math.min(sp, s2), hw), P(s1, hw)].forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
     ctx.closePath(); ctx.fill();
     ctx.restore();
-    ctx.beginPath();
-    q = P(s2, -hw); ctx.moveTo(q[0], q[1]);
-    q = P(s1, -hw); ctx.lineTo(q[0], q[1]);
-    q = P(s1, hw); ctx.lineTo(q[0], q[1]);
-    q = P(s2, hw); ctx.lineTo(q[0], q[1]);
-    ctx.stroke();
+    line([P(s2, -hw), P(s1, -hw), P(s1, hw), P(s2, hw)]);
     ctx.save();
-    ctx.lineWidth += 1.5;
-    ctx.beginPath();
-    q = P(sp, -hw + 2.5); ctx.moveTo(q[0], q[1]);
-    q = P(sp, hw - 2.5); ctx.lineTo(q[0], q[1]);
-    ctx.stroke();
+    ctx.lineWidth += 1.6;
+    line([P(sp, -hw + 2.5), P(sp, hw - 2.5)]);
     ctx.restore();
-    ctx.beginPath();
-    q = P(sp, 0); ctx.moveTo(q[0], q[1]);
-    ctx.lineTo(bx, by);
-    ctx.stroke();
+    line([P(sp, 0), [bx, by]]);
   }
 
   function arrow(ctx, x0, y0, x1, y1, head = 7) {
@@ -288,6 +276,7 @@
     ctx.fillRect(0, 0, W, H);
     drawGrid(ctx, view);
     const offsets = st.offsets;
+    const queue = [], obstacles = [];
     const zoomK = Math.max(0.65, Math.min(1.4, view.scale / 260));
 
     // rastro
@@ -374,7 +363,8 @@
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, y, 11, 0, 2 * Math.PI); ctx.stroke();
       }
-      if (st.labels) label(ctx, n.name, x + 12, y - 12, theme.c.muted);
+      obstacles.push([x - 12, y - 12, 24, 24]);
+      if (st.labels) queue.push({ txt: n.name, pri: 2, cands: [[x + 14, y - 14, 'l'], [x - 14, y - 14, 'r'], [x + 14, y + 14, 'l'], [x - 14, y + 14, 'r']] });
     }
 
     // massas
@@ -420,23 +410,34 @@
         ctx.lineWidth = 2.4;
         arrow(ctx, ox, oy, ox + cx * len, oy + cy * len, 7);
       }
-      if (st.labels) label(ctx, `${n.name} · ${fmt(n.m)} kg`, x + s / 2 + 6, y - s / 2 - 4, theme.c.muted);
+      obstacles.push([x - s / 2 - 3, y - s / 2 - 3, s + 6, s + 6]);
+      if (st.labels) {
+        const gy = s / 2 + 13;
+        queue.push({ txt: `${n.name} · ${fmt(n.m)} kg`, pri: 0, strong: true, cands: [[x, y - gy, 'c'], [x, y + gy, 'c'], [x + s / 2 + 8, y, 'l'], [x - s / 2 - 8, y, 'r'], [x, y - gy - 16, 'c'], [x, y + gy + 16, 'c']] });
+      }
     }
 
     if (st.labels) {
-      ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
       for (const e of scene.elements) {
         const p = elementEnds(scene, view, e, offsets);
         if (!p) continue;
-        const mx = (p.ax + p.bx) / 2, my = (p.ay + p.by) / 2;
         const L = Math.hypot(p.bx - p.ax, p.by - p.ay) || 1;
         let nx = -(p.by - p.ay) / L, ny = (p.bx - p.ax) / L;
         const o = offsets.get(e.id) || 0;
         if (o < 0 || (o === 0 && ny > 0)) { nx = -nx; ny = -ny; }
-        const txt = e.type === 'spring' ? `${e.name} ${fmt(e.k)} N/m` : `${e.name} ${fmt(e.c)} N·s/m`;
-        label(ctx, txt, mx + nx * 16, my + ny * 16, theme.c.muted, true);
+        const txt = e.type === 'spring' ? `${e.name} · ${fmt(e.k)} N/m` : `${e.name} · ${fmt(e.c)} N·s/m`;
+        const cands = [];
+        for (const d of [18, 30]) {
+          for (const f of [0.5, 0.35, 0.65]) {
+            const mx = p.ax + (p.bx - p.ax) * f, my = p.ay + (p.by - p.ay) * f;
+            cands.push([mx + nx * d, my + ny * d, 'c'], [mx - nx * d, my - ny * d, 'c']);
+          }
+        }
+        queue.push({ txt, pri: 1, cands });
       }
     }
+    obstacles.push([8, view.H - 38, 140, 34]);
+    placeLabels(ctx, queue, obstacles, view);
 
     // fantasma do modo
     if (st.ghost) {
@@ -487,15 +488,33 @@
     }
   }
 
-  function label(ctx, txt, x, y, color, centered) {
+  /* Posiciona rótulos sem sobreposição: cada rótulo testa posições candidatas
+   * e fica na primeira que não colide com outro rótulo, massa ou apoio. */
+  function placeLabels(ctx, queue, obstacles, view) {
     ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
-    const w = ctx.measureText(txt).width;
-    const x0 = centered ? x - w / 2 : x;
-    ctx.fillStyle = alpha('canvas', 0.82);
-    ctx.fillRect(x0 - 3, y - 8, w + 6, 15);
-    ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
-    ctx.fillText(txt, x0, y);
+    const placed = [];
+    const hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+    queue.sort((a, b) => a.pri - b.pri);
+    for (const q of queue) {
+      const w = ctx.measureText(q.txt).width + 10, hgt = 17;
+      for (const [x, y, al] of q.cands) {
+        const x0 = al === 'c' ? x - w / 2 : al === 'r' ? x - w : x, y0 = y - hgt / 2;
+        if (x0 < 4 || y0 < 4 || x0 + w > view.W - 4 || y0 + hgt > view.H - 4) continue;
+        const r = [x0, y0, w, hgt];
+        if (placed.some(o => hit(o, r)) || obstacles.some(o => hit(o, r))) continue;
+        placed.push(r);
+        ctx.fillStyle = alpha('canvas', 0.9);
+        roundRect(ctx, x0, y0, w, hgt, 4);
+        ctx.fill();
+        ctx.strokeStyle = alpha('muted', 0.18);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = q.strong ? theme.c.ink : theme.c.muted;
+        ctx.fillText(q.txt, x0 + 5, y0 + hgt / 2 + 0.5);
+        break;
+      }
+    }
   }
 
   Vib.render = { View, theme, readTheme, drawScene, hitNode, hitElement, elementOffsets, massSize, mix, alpha, niceStep };

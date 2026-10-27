@@ -143,6 +143,7 @@
     V.dock.observe(null);
     V.dock.observe(first ? first.id : null);
     V.inspector.render();
+    V.inspector.setTab('sys');
     dirty = true;
   }
 
@@ -243,7 +244,7 @@
       const n = app.scene.get(sel.id);
       if (n && !n.fixed) V.dock.observe(n.id);
     }
-    V.inspector.render();
+    V.inspector.render(true);
     dirty = true;
   };
 
@@ -549,7 +550,10 @@
   $('#btnPlay').addEventListener('click', () => setRunning(!app.running));
   $('#btnStep').addEventListener('click', step);
   $('#btnReset').addEventListener('click', reset);
-  $('#selSpeed').addEventListener('change', e => { app.timeScale = +e.target.value; });
+  document.querySelectorAll('#speedSeg button').forEach(b => b.addEventListener('click', () => {
+    app.timeScale = +b.dataset.speed;
+    document.querySelectorAll('#speedSeg button').forEach(q => q.setAttribute('aria-pressed', String(q === b)));
+  }));
   $('#btnEquil').addEventListener('click', toEquilibrium);
   $('#btnUndo').addEventListener('click', undo);
   $('#btnRedo').addEventListener('click', redo);

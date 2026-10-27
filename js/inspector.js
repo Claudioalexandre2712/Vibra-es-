@@ -87,169 +87,214 @@
     const m = an && an.modes.find(q => q.kind === 'elastic');
     return m ? round3(m.f) : 1;
   }
+  /* ---------- blocos ---------- */
+  const sec = (...kids) => h('div', { class: 'sec' }, ...kids);
+  const head = (title, tag, sub) => h('div', { class: 'sec-head' },
+    h('div', {}, h('h2', {}, title), sub ? h('div', { class: 'sub' }, sub) : null),
+    tag ? h('span', { class: 'tag accent' }, tag) : null);
+  const params = (...kids) => h('div', { class: 'params' }, ...kids);
 
-  /* ---------- painéis ---------- */
+  /* ---------- aba Seleção: nó ---------- */
   function renderNode(box, n) {
     const app = V.app, s = app.scene;
-    box.append(h('div', { class: 'panel-head' },
-      h('h2', {}, n.name),
-      h('span', { class: 'tag accent' }, n.fixed ? 'apoio' : 'massa')));
+    const links = s.attached(n.id).length;
+    box.append(sec(head(n.name, n.fixed ? 'apoio' : 'massa', `${links} ${links === 1 ? 'elemento ligado' : 'elementos ligados'}`)));
 
     if (!n.fixed) {
-      box.append(param({ key: 'm', sym: 'm', label: 'massa', unit: 'kg', min: 0.01, max: 100, get: () => n.m, set: v => { n.m = v; }, valid: v => v > 0 }));
-      box.append(h('h3', {}, 'Graus de liberdade'));
-      box.append(h('div', { class: 'checks' },
-        check('dof-x', 'livre em x', !n.lockX, v => { app.pushHistory(); n.lockX = !v; if (n.lockX) n.vx = 0; app.changed(true); render(); }),
-        check('dof-y', 'livre em y', !n.lockY, v => { app.pushHistory(); n.lockY = !v; if (n.lockY) n.vy = 0; app.changed(true); render(); })));
+      box.append(sec(
+        h('h3', {}, 'Inércia e graus de liberdade'),
+        params(param({ key: 'm', sym: 'm', label: 'massa', unit: 'kg', min: 0.01, max: 100, get: () => n.m, set: v => { n.m = v; }, valid: v => v > 0 })),
+        h('div', { class: 'checks' },
+          check('dof-x', 'livre em x', !n.lockX, v => { app.pushHistory(); n.lockX = !v; if (n.lockX) n.vx = 0; app.changed(true); render(); }),
+          check('dof-y', 'livre em y', !n.lockY, v => { app.pushHistory(); n.lockY = !v; if (n.lockY) n.vy = 0; app.changed(true); render(); }))));
 
-      box.append(h('h3', {}, 'Força externa'));
       const type = n.force ? n.force.type : 'none';
-      box.append(seg([['none', 'Nenhuma'], ['harmonic', 'Harmônica'], ['sweep', 'Varredura']], type, v => {
-        app.pushHistory();
-        if (v === 'none') n.force = null;
-        else {
-          const f = suggestedFreq();
-          const old = n.force || {};
-          n.force = {
-            type: v, F0: old.F0 || 1, f: v === 'sweep' ? round3(f / 3) : (old.f || f),
-            f1: old.f1 || round3(f * 2), T: old.T || 60,
-            angle: old.angle !== undefined ? old.angle : (n.lockX && !n.lockY ? 90 : 0), phase: old.phase || 0,
-          };
-        }
-        app.changed(false);
-        render();
-      }));
+      const fsec = sec(h('h3', {}, 'Força externa'),
+        seg([['none', 'Nenhuma'], ['harmonic', 'Harmônica'], ['sweep', 'Varredura']], type, v => {
+          app.pushHistory();
+          if (v === 'none') n.force = null;
+          else {
+            const f = suggestedFreq();
+            const old = n.force || {};
+            n.force = {
+              type: v, F0: old.F0 || 1, f: v === 'sweep' ? round3(f / 3) : (old.f || f),
+              f1: old.f1 || round3(f * 2), T: old.T || 60,
+              angle: old.angle !== undefined ? old.angle : (n.lockX && !n.lockY ? 90 : 0), phase: old.phase || 0,
+            };
+          }
+          app.changed(false);
+          render();
+        }));
       if (n.force) {
         const F = n.force;
-        box.append(param({ key: 'F0', sym: 'F₀', label: 'amplitude', unit: 'N', min: 0.01, max: 200, get: () => F.F0, set: v => { F.F0 = v; }, valid: v => v >= 0 }));
+        const list = [param({ key: 'F0', sym: 'F₀', label: 'amplitude', unit: 'N', min: 0.01, max: 200, get: () => F.F0, set: v => { F.F0 = v; }, valid: v => v >= 0 })];
         if (F.type === 'sweep') {
-          box.append(param({ key: 'f', sym: 'f₁', label: 'frequência inicial', unit: 'Hz', min: 0.02, max: 50, get: () => F.f, set: v => { F.f = v; }, valid: v => v >= 0 }));
-          box.append(param({ key: 'f1', sym: 'f₂', label: 'frequência final', unit: 'Hz', min: 0.02, max: 50, get: () => F.f1, set: v => { F.f1 = v; }, valid: v => v >= 0 }));
-          box.append(param({ key: 'T', sym: 'T', label: 'duração da varredura', unit: 's', min: 1, max: 600, get: () => F.T, set: v => { F.T = v; }, valid: v => v > 0 }));
+          list.push(param({ key: 'f', sym: 'f₁', label: 'frequência inicial', unit: 'Hz', min: 0.02, max: 50, get: () => F.f, set: v => { F.f = v; }, valid: v => v >= 0 }));
+          list.push(param({ key: 'f1', sym: 'f₂', label: 'frequência final', unit: 'Hz', min: 0.02, max: 50, get: () => F.f1, set: v => { F.f1 = v; }, valid: v => v >= 0 }));
+          list.push(param({ key: 'T', sym: 'T', label: 'duração', unit: 's', min: 1, max: 600, get: () => F.T, set: v => { F.T = v; }, valid: v => v > 0 }));
         } else {
-          box.append(param({ key: 'f', sym: 'f', label: 'frequência', unit: 'Hz', min: 0.02, max: 50, get: () => F.f, set: v => { F.f = v; }, valid: v => v >= 0 }));
+          list.push(param({ key: 'f', sym: 'f', label: 'frequência', unit: 'Hz', min: 0.02, max: 50, get: () => F.f, set: v => { F.f = v; }, valid: v => v >= 0 }));
         }
-        box.append(param({ key: 'ang', sym: 'θ', label: 'direção', unit: '°', min: -180, max: 180, log: false, get: () => F.angle, set: v => { F.angle = v; } }));
-        box.append(param({ key: 'ph', sym: 'φ', label: 'fase', unit: '°', min: -180, max: 180, log: false, get: () => F.phase, set: v => { F.phase = v; } }));
-        box.append(h('p', { class: 'muted' }, 'F(t) = F₀·sen(2πft + φ), na direção θ medida a partir de +x.'));
+        list.push(param({ key: 'ang', sym: 'θ', label: 'direção', unit: '°', min: -180, max: 180, log: false, get: () => F.angle, set: v => { F.angle = v; } }));
+        list.push(param({ key: 'ph', sym: 'φ', label: 'fase', unit: '°', min: -180, max: 180, log: false, get: () => F.phase, set: v => { F.phase = v; } }));
+        fsec.append(params(list), h('p', { class: 'note' }, 'F(t) = F₀·sen(2πft + φ), na direção θ medida a partir de +x.'));
       }
-      box.append(h('h3', {}, 'Estado'));
-      box.append(live([['posição x, y', 'lv-pos'], ['desloc. do equilíbrio', 'lv-u'], ['velocidade', 'lv-v']]));
-      box.append(h('div', { class: 'row-actions' },
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); n.vx = n.vy = 0; s.rev++; } }, 'Zerar velocidade'),
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); s.setFixed(n, true); app.changed(true); render(); } }, 'Tornar apoio'),
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => app.deleteSelection() }, 'Excluir')));
+      box.append(fsec);
+
+      box.append(sec(h('h3', {}, 'Estado agora'),
+        live([['posição x, y', 'lv-pos'], ['desloc. do equilíbrio', 'lv-u'], ['velocidade', 'lv-v']]),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); n.vx = n.vy = 0; s.rev++; } }, 'Zerar velocidade'),
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); s.setFixed(n, true); app.changed(true); render(); } }, 'Tornar apoio'),
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => app.deleteSelection() }, 'Excluir'))));
     } else {
-      box.append(h('h3', {}, 'Excitação de base'));
       const on = !!(n.base && n.base.A);
-      box.append(seg([['none', 'Fixo'], ['harmonic', 'Harmônica']], on ? 'harmonic' : 'none', v => {
-        app.pushHistory();
-        n.base = v === 'none' ? null : Object.assign({ A: 0.01, f: suggestedFreq(), angle: 0, phase: 0 }, n.base || {}, { A: (n.base && n.base.A) || 0.01 });
-        if (!n.base) { n.x = n.x0; n.y = n.y0; }
-        app.changed(false);
-        render();
-      }));
+      const bsec = sec(h('h3', {}, 'Excitação de base'),
+        seg([['none', 'Fixo'], ['harmonic', 'Harmônica']], on ? 'harmonic' : 'none', v => {
+          app.pushHistory();
+          n.base = v === 'none' ? null : Object.assign({ A: 0.01, f: suggestedFreq(), angle: 0, phase: 0 }, n.base || {}, { A: (n.base && n.base.A) || 0.01 });
+          if (!n.base) { n.x = n.x0; n.y = n.y0; }
+          app.changed(false);
+          render();
+        }));
       if (on) {
         const B = n.base;
-        box.append(param({ key: 'A', sym: 'A', label: 'amplitude', unit: 'm', min: 0.0005, max: 0.5, get: () => B.A, set: v => { B.A = v; }, valid: v => v >= 0 }));
-        box.append(param({ key: 'bf', sym: 'f', label: 'frequência', unit: 'Hz', min: 0.02, max: 50, get: () => B.f, set: v => { B.f = v; }, valid: v => v >= 0 }));
-        box.append(param({ key: 'bang', sym: 'θ', label: 'direção', unit: '°', min: -180, max: 180, log: false, get: () => B.angle, set: v => { B.angle = v; } }));
-        box.append(param({ key: 'bph', sym: 'φ', label: 'fase', unit: '°', min: -180, max: 180, log: false, get: () => B.phase, set: v => { B.phase = v; } }));
-        box.append(h('p', { class: 'muted' }, 'u(t) = A·sen(2πft + φ) na direção θ. Todos os apoios excitados devem ter a mesma frequência para a resposta em frequência.'));
-      }
-      box.append(h('h3', {}, 'Estado'));
-      box.append(live([['posição x, y', 'lv-pos']]));
-      box.append(h('div', { class: 'row-actions' },
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); s.setFixed(n, false); app.changed(true); render(); } }, 'Tornar massa'),
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => app.deleteSelection() }, 'Excluir')));
+        bsec.append(params(
+          param({ key: 'A', sym: 'A', label: 'amplitude', unit: 'm', min: 0.0005, max: 0.5, get: () => B.A, set: v => { B.A = v; }, valid: v => v >= 0 }),
+          param({ key: 'bf', sym: 'f', label: 'frequência', unit: 'Hz', min: 0.02, max: 50, get: () => B.f, set: v => { B.f = v; }, valid: v => v >= 0 }),
+          param({ key: 'bang', sym: 'θ', label: 'direção', unit: '°', min: -180, max: 180, log: false, get: () => B.angle, set: v => { B.angle = v; } }),
+          param({ key: 'bph', sym: 'φ', label: 'fase', unit: '°', min: -180, max: 180, log: false, get: () => B.phase, set: v => { B.phase = v; } })),
+        h('p', { class: 'note' }, 'u(t) = A·sen(2πft + φ) na direção θ. Para a resposta em frequência, todos os apoios excitados devem ter a mesma frequência.'));
+      } else bsec.append(h('p', { class: 'note' }, 'Apoio imóvel. Escolha “Harmônica” para mover o apoio como uma base vibrante (estrada, sismo, máquina vizinha).'));
+      box.append(bsec);
+      box.append(sec(h('h3', {}, 'Estado agora'),
+        live([['posição x, y', 'lv-pos']]),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); s.setFixed(n, false); app.changed(true); render(); } }, 'Tornar massa'),
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => app.deleteSelection() }, 'Excluir'))));
     }
   }
 
+  /* ---------- aba Seleção: elemento ---------- */
   function renderElement(box, e) {
     const app = V.app, s = app.scene;
     const a = s.get(e.a), b = s.get(e.b);
-    box.append(h('div', { class: 'panel-head' },
-      h('h2', {}, e.name),
-      h('span', { class: 'tag accent' }, e.type === 'spring' ? 'mola' : 'amortecedor')));
-    box.append(h('p', { class: 'muted' }, `liga ${a.name} ↔ ${b.name}`));
+    box.append(sec(head(e.name, e.type === 'spring' ? 'mola' : 'amortecedor', `liga ${a.name} ↔ ${b.name}`)));
     if (e.type === 'spring') {
-      box.append(param({ key: 'k', sym: 'k', label: 'rigidez', unit: 'N/m', min: 0.1, max: 1e5, get: () => e.k, set: v => { e.k = v; }, valid: v => v >= 0 }));
       const Lnow = s.elementLength(e);
-      box.append(param({ key: 'L0', sym: 'L₀', label: 'comprimento natural', unit: 'm', min: 0, max: Math.max(1, +(2.2 * Math.max(Lnow, e.L0)).toFixed(2)), log: false, get: () => e.L0, set: v => { e.L0 = v; }, valid: v => v >= 0 }));
-      box.append(h('div', { class: 'row-actions' },
-        h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); e.L0 = round3(s.elementLength(e)); app.changed(false); render(); } }, 'L₀ = comprimento atual')));
-      box.append(param({ key: 'k3', sym: 'k₃', label: 'termo cúbico', unit: 'N/m³', min: -1e5, max: 1e5, slider: false, get: () => e.k3, set: v => { e.k3 = v; } }));
-      box.append(h('p', { class: 'muted' }, 'Força na mola: F = k·ΔL + k₃·ΔL³. Com k₃ ≠ 0 a mola é não linear (Duffing); a análise modal usa a rigidez tangente no equilíbrio.'));
-      box.append(h('h3', {}, 'Estado'));
-      box.append(live([['comprimento L', 'lv-L'], ['deformação ΔL', 'lv-dL'], ['força (tração +)', 'lv-F']]));
+      box.append(sec(h('h3', {}, 'Rigidez'),
+        params(
+          param({ key: 'k', sym: 'k', label: 'rigidez', unit: 'N/m', min: 0.1, max: 1e5, get: () => e.k, set: v => { e.k = v; }, valid: v => v >= 0 }),
+          param({ key: 'L0', sym: 'L₀', label: 'comprimento natural', unit: 'm', min: 0, max: Math.max(1, +(2.2 * Math.max(Lnow, e.L0)).toFixed(2)), log: false, get: () => e.L0, set: v => { e.L0 = v; }, valid: v => v >= 0 })),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { app.pushHistory(); e.L0 = round3(s.elementLength(e)); app.changed(false); render(); } }, 'L₀ = comprimento atual'))));
+      box.append(sec(h('h3', {}, 'Não linearidade'),
+        params(param({ key: 'k3', sym: 'k₃', label: 'termo cúbico', unit: 'N/m³', min: -1e5, max: 1e5, slider: false, get: () => e.k3, set: v => { e.k3 = v; } })),
+        h('p', { class: 'note' }, 'F = k·ΔL + k₃·ΔL³. Com k₃ ≠ 0 a mola é de Duffing; a análise modal usa a rigidez tangente no equilíbrio.')));
+      box.append(sec(h('h3', {}, 'Estado agora'), live([['comprimento L', 'lv-L'], ['deformação ΔL', 'lv-dL'], ['força (tração +)', 'lv-F']])));
     } else {
-      box.append(param({ key: 'c', sym: 'c', label: 'amortecimento', unit: 'N·s/m', min: 0.001, max: 2000, get: () => e.c, set: v => { e.c = v; }, valid: v => v >= 0 }));
-      box.append(h('p', { class: 'muted' }, 'Força viscosa proporcional à velocidade relativa ao longo do eixo: F = c·(v_b − v_a)·n.'));
-      box.append(h('h3', {}, 'Estado'));
-      box.append(live([['comprimento L', 'lv-L'], ['força (tração +)', 'lv-F'], ['potência dissipada', 'lv-P']]));
+      box.append(sec(h('h3', {}, 'Amortecimento viscoso'),
+        params(param({ key: 'c', sym: 'c', label: 'coeficiente', unit: 'N·s/m', min: 0.001, max: 2000, get: () => e.c, set: v => { e.c = v; }, valid: v => v >= 0 })),
+        h('p', { class: 'note' }, 'F = c·(v_b − v_a)·n: proporcional à velocidade relativa ao longo do eixo.')));
+      box.append(sec(h('h3', {}, 'Estado agora'), live([['comprimento L', 'lv-L'], ['força (tração +)', 'lv-F'], ['potência dissipada', 'lv-P']])));
     }
-    box.append(h('div', { class: 'row-actions' },
-      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => app.deleteSelection() }, 'Excluir')));
+    box.append(sec(h('div', { class: 'row-actions' },
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => app.deleteSelection() }, 'Excluir elemento'))));
   }
 
+  function renderEmpty(box) {
+    const ic = document.createElement('span');
+    ic.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8-6 2-3 6z"/></svg>';
+    box.append(h('div', { class: 'empty' }, ic,
+      h('b', {}, 'Nada selecionado'),
+      h('p', {}, 'Clique em uma massa, apoio, mola ou amortecedor no desenho para editar seus parâmetros aqui.')));
+  }
+
+  /* ---------- aba Sistema ---------- */
   let defaultsOpen = false;
   function renderScene(box) {
     const app = V.app, s = app.scene, meta = s.meta;
-    box.append(h('div', { class: 'panel-head' },
-      h('h2', {}, meta ? meta.title : 'Sistema personalizado'),
-      h('span', { class: 'tag' }, 'sistema')));
-    if (meta && meta.text) box.append(h('p', {}, meta.text));
-    if (meta && meta.theory) box.append(h('p', { class: 'theory' }, meta.theory));
-    if (!meta) box.append(h('p', { class: 'muted' }, 'Selecione uma massa, um apoio ou um elemento para editar. Sem seleção, este painel mostra o ambiente e os valores usados nas novas peças.'));
+    const top = sec(head(meta ? meta.title : 'Sistema personalizado', null));
+    if (meta && meta.text) top.append(h('p', { class: 'lead' }, meta.text));
+    if (meta && meta.theory) top.append(h('p', { class: 'theory' }, meta.theory));
+    if (!meta) top.append(h('p', { class: 'note' }, 'Sistema montado ou importado por você. Use as ferramentas à esquerda para acrescentar peças.'));
+    box.append(top);
 
-    box.append(h('h3', {}, 'Ambiente'));
-    box.append(h('div', { class: 'checks' }, check('env-g', 'gravidade', s.gravity, v => { app.pushHistory(); s.gravity = v; app.changed(false); render(); })));
-    if (s.gravity) box.append(param({ key: 'g', sym: 'g', label: 'aceleração da gravidade', unit: 'm/s²', min: 0, max: 30, log: false, get: () => s.g, set: v => { s.g = v; }, valid: v => v >= 0 }));
+    const free = s.nodes.filter(n => !n.fixed);
+    const cnt = t => s.elements.filter(e => e.type === t).length;
+    box.append(sec(h('h3', {}, 'Resumo'), h('div', { class: 'stats' },
+      [[free.length, 'massas'], [s.nodes.length - free.length, 'apoios'], [s.freeDofCount(), 'GDL'],
+        [cnt('spring'), 'molas'], [cnt('damper'), 'amortecedores'], [fmt(free.reduce((a, n) => a + n.m, 0)), 'kg no total']]
+        .map(([v, k]) => h('div', { class: 'stat' }, h('b', {}, String(v)), h('span', {}, k))))));
+
+    const env = sec(h('h3', {}, 'Ambiente'),
+      h('div', { class: 'checks' }, check('env-g', 'gravidade ligada', s.gravity, v => { app.pushHistory(); s.gravity = v; app.changed(false); render(); })));
+    if (s.gravity) env.append(params(param({ key: 'g', sym: 'g', label: 'aceleração da gravidade', unit: 'm/s²', min: 0, max: 30, log: false, get: () => s.g, set: v => { s.g = v; }, valid: v => v >= 0 })));
+    box.append(env);
 
     const d = app.defaults;
-    const det = h('details', { class: 'defaults', open: defaultsOpen || null, ontoggle: e => { defaultsOpen = e.target.open; } },
-      h('summary', {}, `Novas peças: ${fmt(d.m)} kg · ${fmt(d.k)} N/m · ${fmt(d.c)} N·s/m`),
+    box.append(sec(h('details', { class: 'defaults', open: defaultsOpen || null, ontoggle: e => { defaultsOpen = e.target.open; } },
+      h('summary', {}, h('span', {}, 'Valores das novas peças: ', h('b', {}, `${fmt(d.m)} kg · ${fmt(d.k)} N/m · ${fmt(d.c)} N·s/m`))),
       param({ key: 'dm', sym: 'm', label: 'massa', unit: 'kg', min: 0.01, max: 100, get: () => d.m, set: v => { d.m = v; }, valid: v => v > 0 }),
       param({ key: 'dk', sym: 'k', label: 'rigidez', unit: 'N/m', min: 0.1, max: 1e5, get: () => d.k, set: v => { d.k = v; }, valid: v => v >= 0 }),
-      param({ key: 'dc', sym: 'c', label: 'amortecimento', unit: 'N·s/m', min: 0.001, max: 2000, get: () => d.c, set: v => { d.c = v; }, valid: v => v >= 0 }));
-    box.append(det);
-
-    box.append(h('h3', {}, 'Resumo'));
-    const cnt = (f) => f.length;
-    const free = s.nodes.filter(n => !n.fixed);
-    box.append(h('div', { class: 'stats' },
-      [[cnt(free), 'massas'], [s.nodes.length - free.length, 'apoios'], [s.freeDofCount(), 'GDL'],
-        [cnt(s.elements.filter(e => e.type === 'spring')), 'molas'], [cnt(s.elements.filter(e => e.type === 'damper')), 'amortecedores'],
-        [fmt(free.reduce((a, n) => a + n.m, 0)), 'kg no total']]
-        .map(([v, k]) => h('div', { class: 'stat' }, h('b', {}, String(v)), h('span', {}, k)))));
+      param({ key: 'dc', sym: 'c', label: 'amortecimento', unit: 'N·s/m', min: 0.001, max: 2000, get: () => d.c, set: v => { d.c = v; }, valid: v => v >= 0 }))));
   }
 
-  function render() {
-    const app = V.app, box = $('#inspSel');
-    const keepFocus = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
+  /* ---------- abas ---------- */
+  let tab = 'sys';
+  function setTab(t) {
+    tab = t;
+    document.querySelectorAll('.itab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.itab === t)));
+    $('#inspSys').hidden = t !== 'sys';
+    $('#inspSel').hidden = t !== 'sel';
+    $('#inspModal').hidden = t !== 'modes';
+  }
+  document.querySelectorAll('.itab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.itab)));
+
+  function keepFocus(box, fn) {
+    const id = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
     box.replaceChildren();
+    fn();
+    if (id) { const el = document.getElementById(id); if (el) el.focus(); }
+  }
+
+  /* Redesenha as abas Sistema e Seleção. `follow` muda para a aba da seleção. */
+  function render(follow) {
+    const app = V.app;
     const sel = app.selection && app.scene.get(app.selection.id);
-    if (!sel) { app.selection = null; renderScene(box); }
-    else if (app.selection.kind === 'node') renderNode(box, sel);
-    else renderElement(box, sel);
-    if (keepFocus) { const el = document.getElementById(keepFocus); if (el) el.focus(); }
+    if (!sel) app.selection = null;
+    keepFocus($('#inspSys'), () => renderScene($('#inspSys')));
+    const sbox = $('#inspSel');
+    keepFocus(sbox, () => {
+      if (!sel) renderEmpty(sbox);
+      else if (app.selection.kind === 'node') renderNode(sbox, sel);
+      else renderElement(sbox, sel);
+    });
+    const badge = $('#selBadge');
+    badge.hidden = !sel;
+    if (sel) badge.textContent = sel.name;
+    if (follow === true) setTab(sel ? 'sel' : (tab === 'sel' ? 'sys' : tab));
     liveUpdate(true);
   }
 
-  /* ---------- análise modal ---------- */
+  /* ---------- aba Modos ---------- */
   const MAX_ROWS = 24;
   let showAll = false;
   function renderModal() {
     const app = V.app, box = $('#inspModal'), M = app.modal;
     box.replaceChildren();
     const nf = app.scene.freeDofCount();
-    box.append(h('div', { class: 'panel-head' },
-      h('h2', {}, 'Análise modal'),
-      h('span', { class: 'tag' }, `${nf} GDL`)));
-    if (M.msg) box.append(h('p', { class: 'status' + (M.bad ? ' bad' : '') }, M.msg));
     const an = M.an;
+    const elastic = an ? an.modes.filter(m => m.kind === 'elastic') : [];
+    const badge = $('#modesBadge');
+    badge.hidden = !an || !an.modes.length;
+    if (an && an.modes.length) badge.textContent = String(an.modes.length);
+
+    const top = sec(head('Análise modal', `${nf} GDL`, elastic.length ? `1º modo: ${fmt(elastic[0].f, 4)} Hz` : null));
+    if (M.msg) top.append(h('p', { class: 'status' + (M.bad ? ' bad' : '') }, M.msg));
+    box.append(top);
     if (!an || !an.modes.length) {
-      if (!M.msg) box.append(h('p', { class: 'status' }, 'Sem graus de liberdade livres.'));
+      if (!M.msg) box.append(sec(h('p', { class: 'note' }, 'Sem graus de liberdade livres: crie massas e ligue-as a apoios.')));
       return;
     }
     const list = h('div', { class: 'modes' });
@@ -260,23 +305,23 @@
       else if (m.kind === 'unstable') { main = 'instável'; sub = `λ = ${fmt(m.lam)}`; }
       else {
         main = `${fmt(m.f, 4)} Hz`;
-        sub = m.zeta > 1e-9 ? `ζ ${fmt(m.zeta * 100, 2)} %` : 'ζ 0';
-        if (m.zeta >= 1) sub = `ζ ${fmt(m.zeta, 3)} · sem oscilação`;
+        sub = m.zeta >= 1 ? `ζ ${fmt(m.zeta, 3)} · não oscila` : (m.zeta > 1e-9 ? `ζ ${fmt(m.zeta * 100, 2)} % · T ${fmt(1 / m.f, 3)} s` : `sem amortecimento · T ${fmt(1 / m.f, 3)} s`);
       }
       const on = app.ghost && app.ghost.r === r;
       list.append(h('div', { class: 'mode-row' + (on ? ' on' : '') },
         h('span', { class: 'idx' }, String(r + 1)),
-        h('span', { class: 'fr' }, main, h('small', {}, sub)),
+        h('span', { class: 'fr' }, h('b', {}, main), h('small', {}, sub)),
         h('span', { class: 'acts' },
           h('button', { class: 'btn btn-sm', type: 'button', 'aria-pressed': String(!!on), title: 'Animar a forma do modo sobre o desenho', onclick: () => app.toggleGhost(r) }, on ? 'Parar' : 'Ver'),
           m.kind === 'elastic' ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Soltar o sistema a partir da forma deste modo', onclick: () => app.exciteMode(r) }, 'Excitar') : null)));
     });
-    box.append(list);
+    const lsec = sec(h('h3', {}, 'Frequências naturais'), list);
     if (an.modes.length > MAX_ROWS) {
-      box.append(h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { showAll = !showAll; renderModal(); } },
+      lsec.append(h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { showAll = !showAll; renderModal(); } },
         showAll ? 'Mostrar menos' : `Mostrar todos os ${an.modes.length} modos`));
     }
-    box.append(h('p', { class: 'muted' }, 'Frequências não amortecidas fn = ωn/2π. ζ modal = φᵀCφ/(2ωn), exato para amortecimento proporcional.'));
+    box.append(lsec);
+    box.append(sec(h('p', { class: 'note' }, 'fn = ωn/2π, sem amortecimento. ζ modal = φᵀCφ/(2ωn), exato para amortecimento proporcional. “Ver” anima a forma do modo; “Excitar” solta o sistema nessa forma.')));
   }
 
   /* ---------- leituras ao vivo ---------- */
@@ -312,5 +357,5 @@
     }
   }
 
-  V.inspector = { render, renderModal, liveUpdate, h };
+  V.inspector = { render, renderModal, liveUpdate, setTab, h };
 })();

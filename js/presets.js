@@ -31,7 +31,7 @@
       build() {
         const s = S();
         [0.05, 0.2, 1, 2].forEach((z, i) => {
-          const y = -0.45 * i;
+          const y = -0.6 * i;
           const A = s.addNode(0, y, { fixed: true });
           const m = s.addNode(0.6, y, { m: 1, lockY: true });
           s.addElement('spring', A.id, m.id, { k: 100 });

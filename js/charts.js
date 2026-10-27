@@ -88,6 +88,7 @@
       ctx.beginPath();
       ctx.rect(pad.l, pad.t, pw, ph);
       ctx.clip();
+      const rows = [[], [], []];
       for (const v of cfg.vlines || []) {
         if (v.x < cfg.x.min || v.x > cfg.x.max) continue;
         const s = Math.round(X(v.x)) + 0.5;
@@ -97,10 +98,19 @@
         ctx.beginPath(); ctx.moveTo(s, pad.t); ctx.lineTo(s, pad.t + ph); ctx.stroke();
         ctx.setLineDash([]);
         if (v.label) {
-          ctx.fillStyle = v.color || theme.c.muted;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          ctx.fillText(v.label, s + 3, pad.t + 3 + (v.row || 0) * 13);
+          // rótulo na primeira linha livre; sem espaço, fica só a linha
+          const w = ctx.measureText(v.label).width + 8;
+          const x0 = Math.min(s + 3, pad.l + pw - w);
+          const row = rows.findIndex(r => r.every(([a, b]) => x0 + w < a || x0 > b));
+          if (row >= 0) {
+            rows[row].push([x0, x0 + w]);
+            ctx.fillStyle = theme.c.panel;
+            ctx.fillRect(x0 - 1, pad.t + 3 + row * 14, w - 4, 13);
+            ctx.fillStyle = v.color || theme.c.muted;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(v.label, x0 + 1, pad.t + 4 + row * 14);
+          }
         }
       }
       ctx.lineJoin = 'round';
