@@ -8,9 +8,9 @@ Funciona direto no navegador: HTML, CSS e JavaScript puros, sem build e sem depe
 
 | Área | Recursos |
 |---|---|
-| Montagem | massas, apoios, molas, amortecedores e mola+amortecedor em paralelo; arrastar de um nó para o vazio cria uma massa já ligada; alinhamento à grade de 5 cm; desfazer/refazer |
+| Montagem (modo **Montar**) | bandeja de peças com arrastar e soltar: massa ou apoio solto perto de um nó já entra ligado; mola/amortecedor solto entre dois nós se encaixa entre eles; alça ⊕ em cada nó para puxar uma ligação; duplo clique cria massa; barra de ações junto da peça selecionada (ligar, fixar, travar x/y, trocar tipo, acrescentar em paralelo, excluir); animações de entrada e saída; grade de 5 cm; desfazer/refazer |
 | Graus de liberdade | cada massa livre em x, em y ou nos dois (trilhos); sistemas de 1 a centenas de GDL |
-| Interação | com a simulação rodando, arrastar uma massa a puxa por uma "mão" elástica; pausado, o arraste define o deslocamento inicial; zoom por roda/pinça |
+| Interação (modo **Ensaiar**) | com a simulação rodando, arrastar uma massa a puxa por uma "mão" elástica; pausado, o arraste define o deslocamento inicial; voltar a Montar reinicia o sistema na condição inicial; zoom por roda/pinça com enquadramento animado |
 | Excitações | força harmônica ou varredura de frequência (chirp) em qualquer direção; excitação de base harmônica nos apoios |
 | Molas | lineares ou não lineares (termo cúbico de Duffing, `F = k·ΔL + k₃·ΔL³`), geometria exata em 2D (grandes deslocamentos) |
 | Análise modal | equilíbrio estático por Newton–Raphson, rigidez tangente com termo geométrico `T/L`, frequências naturais, fatores de amortecimento modais, animação da forma de cada modo e botão "Excitar" para soltar o sistema num modo |

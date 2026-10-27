@@ -69,8 +69,9 @@
       this.cx = wx - (sx - this.W / 2) / this.scale;
       this.cy = wy + (sy - this.H / 2) / this.scale;
     }
-    fit(scene) {
-      if (!scene.nodes.length) { this.cx = 0; this.cy = 0; this.scale = 240; return; }
+    fit(scene) { Object.assign(this, this.target(scene)); }
+    target(scene) {
+      if (!scene.nodes.length) return { cx: 0, cy: 0, scale: 240 };
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (const n of scene.nodes) {
         const x = n.fixed ? n.x0 : n.x, y = n.fixed ? n.y0 : n.y;
@@ -78,15 +79,31 @@
       }
       const w = Math.max(x1 - x0, 0.3), h = Math.max(y1 - y0, 0.3);
       const mx = Math.min(120, this.W * 0.12), my = Math.min(120, this.H * 0.18);
-      this.scale = Math.min(700, Math.max(30, Math.min((this.W - mx) / (w * 1.2), (this.H - my) / (h * 1.3))));
-      this.cx = (x0 + x1) / 2;
-      this.cy = (y0 + y1) / 2;
+      return {
+        scale: Math.min(700, Math.max(30, Math.min((this.W - mx) / (w * 1.2), (this.H - my) / (h * 1.3)))),
+        cx: (x0 + x1) / 2,
+        cy: (y0 + y1) / 2,
+      };
     }
   }
 
   function massSize(n, view) {
     return Math.min(56, Math.max(13, 0.075 * Math.cbrt(n.m) * view.scale));
   }
+
+  /* Alça de ligação: pequeno ⊕ no canto superior direito do nó. */
+  function knobPos(n, view) {
+    const x = view.sx(n.x), y = view.sy(n.y);
+    const o = n.fixed ? 15 : massSize(n, view) / 2 + 10;
+    return { x: x + o * 0.92, y: y - o * 0.92 };
+  }
+  function hitKnob(n, view, sx, sy) {
+    const k = knobPos(n, view);
+    return Math.hypot(k.x - sx, k.y - sy) <= 11;
+  }
+
+  const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2; };
+  const easeOutCubic = t => 1 - (1 - t) ** 3;
 
   /* Deslocamento lateral de elementos paralelos entre o mesmo par de nós. */
   function elementOffsets(scene) {
@@ -295,15 +312,22 @@
     // elementos
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
+    const appear = st.appear || (() => 1), hl = st.hl || (() => 0);
     for (const e of scene.elements) {
       const p = elementEnds(scene, view, e, offsets);
       if (!p) continue;
-      const sel = st.selection && st.selection.id === e.id;
-      const hov = st.hover && st.hover.id === e.id;
-      if (sel || hov) {
-        ctx.strokeStyle = alpha('accent', sel ? 0.28 : 0.16);
-        ctx.lineWidth = 12;
+      const g = hl(e.id);
+      if (g > 0.01) {
+        ctx.strokeStyle = alpha('accent', 0.26 * g);
+        ctx.lineWidth = 14;
         ctx.beginPath(); ctx.moveTo(p.ax, p.ay); ctx.lineTo(p.bx, p.by); ctx.stroke();
+      }
+      const a = appear(e.id);
+      ctx.save();
+      if (a < 1) {
+        const f = easeOutCubic(a);
+        p.bx = p.ax + (p.bx - p.ax) * f; p.by = p.ay + (p.by - p.ay) * f;
+        ctx.globalAlpha = 0.35 + 0.65 * f;
       }
       if (e.type === 'spring') {
         const L = scene.elementLength(e);
@@ -319,12 +343,16 @@
         ctx.lineWidth = 1.8;
         drawDamper(ctx, p.ax, p.ay, p.bx, p.by, (e.L0 || scene.elementLength(e)) * view.scale, 7 * zoomK);
       }
+      ctx.restore();
     }
 
     // apoios
     for (const n of scene.nodes) {
       if (!n.fixed) continue;
       const x = view.sx(n.x), y = view.sy(n.y);
+      const ka = easeOutBack(appear(n.id));
+      ctx.save();
+      if (ka !== 1) { ctx.translate(x, y); ctx.scale(ka, ka); ctx.translate(-x, -y); }
       const [dx, dy] = anchorDir(scene, n);
       const ux = dx, uy = -dy;                // direção em pixels
       const px = -uy, py = ux;
@@ -357,12 +385,13 @@
         arrow(ctx, ox, oy, ox + cx * 14, oy + cy * 14, 5);
         arrow(ctx, ox, oy, ox - cx * 14, oy - cy * 14, 5);
       }
-      const sel = st.selection && st.selection.id === n.id;
-      if (sel || (st.hover && st.hover.id === n.id)) {
-        ctx.strokeStyle = alpha('accent', sel ? 1 : 0.5);
+      const ga = hl(n.id);
+      if (ga > 0.01) {
+        ctx.strokeStyle = alpha('accent', ga);
         ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, y, 11, 0, 2 * Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 8 + 4 * ga, 0, 2 * Math.PI); ctx.stroke();
       }
+      ctx.restore();
       obstacles.push([x - 12, y - 12, 24, 24]);
       if (st.labels) queue.push({ txt: n.name, pri: 2, cands: [[x + 14, y - 14, 'l'], [x - 14, y - 14, 'r'], [x + 14, y + 14, 'l'], [x - 14, y + 14, 'r']] });
     }
@@ -382,20 +411,19 @@
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      const sel = st.selection && st.selection.id === n.id;
-      const hov = st.hover && st.hover.id === n.id;
-      const g = ctx.createLinearGradient(x - s / 2, y - s / 2, x + s / 2, y + s / 2);
-      g.addColorStop(0, theme.c['mass-hi']);
-      g.addColorStop(1, theme.c.mass);
-      ctx.fillStyle = g;
-      roundRect(ctx, x - s / 2, y - s / 2, s, s, Math.min(6, s / 4));
-      ctx.fill();
-      if (sel || hov) {
-        ctx.strokeStyle = alpha('accent', sel ? 1 : 0.55);
+      const ka = easeOutBack(appear(n.id));
+      ctx.save();
+      if (ka !== 1) { ctx.translate(x, y); ctx.scale(ka, ka); ctx.translate(-x, -y); }
+      drawMass(ctx, x, y, s, 1);
+      const gm = hl(n.id);
+      if (gm > 0.01) {
+        const pad = 3 + 2 * gm;
+        ctx.strokeStyle = alpha('accent', gm);
         ctx.lineWidth = 2.5;
-        roundRect(ctx, x - s / 2 - 4, y - s / 2 - 4, s + 8, s + 8, Math.min(9, s / 3));
+        roundRect(ctx, x - s / 2 - pad, y - s / 2 - pad, s + 2 * pad, s + 2 * pad, Math.min(9, s / 3));
         ctx.stroke();
       }
+      ctx.restore();
       if (n.lockX && n.lockY) {
         ctx.strokeStyle = theme.c.bad;
         ctx.lineWidth = 2;
@@ -463,17 +491,72 @@
       }
     }
 
-    // ligação em construção
-    if (st.connect) {
-      const c = st.connect;
-      ctx.strokeStyle = theme.c.accent;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 5]);
-      ctx.beginPath(); ctx.moveTo(c.x0, c.y0); ctx.lineTo(c.x1, c.y1); ctx.stroke();
-      ctx.setLineDash([]);
-      if (c.target) {
-        ctx.beginPath(); ctx.arc(c.x1, c.y1, 14, 0, 2 * Math.PI); ctx.stroke();
+    // peças saindo (exclusão animada)
+    for (const d of st.dying || []) {
+      ctx.save();
+      ctx.globalAlpha = d.f;
+      if (d.type === 'node') {
+        const x = view.sx(d.x), y = view.sy(d.y), k = 0.6 + 0.4 * d.f;
+        ctx.translate(x, y); ctx.scale(k, k); ctx.translate(-x, -y);
+        if (d.fixed) { ctx.strokeStyle = theme.c.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.stroke(); }
+        else drawMass(ctx, x, y, d.s, 1);
+      } else {
+        ctx.strokeStyle = theme.c.muted;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(view.sx(d.ax), view.sy(d.ay)); ctx.lineTo(view.sx(d.bx), view.sy(d.by)); ctx.stroke();
       }
+      ctx.restore();
+    }
+    // ondas de confirmação
+    for (const r of st.ripples || []) {
+      ctx.strokeStyle = alpha('accent', 0.55 * (1 - r.f));
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(view.sx(r.x), view.sy(r.y), 10 + 30 * easeOutCubic(r.f), 0, 2 * Math.PI); ctx.stroke();
+    }
+
+    // alça ⊕ de ligação
+    if (st.knob) {
+      const n = scene.get(st.knob.id);
+      if (n) {
+        const k = knobPos(n, view), hot = st.knob.hot;
+        const pulse = hot ? 1 : 0.5 + 0.5 * Math.sin((st.now || 0) / 260);
+        ctx.fillStyle = hot ? theme.c.accent : theme.c.panel;
+        ctx.strokeStyle = theme.c.accent;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.arc(k.x, k.y, 8.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        if (!hot) {
+          ctx.strokeStyle = alpha('accent', 0.25 * pulse);
+          ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(k.x, k.y, 12, 0, 2 * Math.PI); ctx.stroke();
+        }
+        ctx.strokeStyle = hot ? theme.c.panel : theme.c.accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(k.x - 4, k.y); ctx.lineTo(k.x + 4, k.y); ctx.moveTo(k.x, k.y - 4); ctx.lineTo(k.x, k.y + 4); ctx.stroke();
+      }
+    }
+
+    // pré-visualização de peças em construção
+    const pv = st.preview;
+    if (pv) {
+      ctx.save();
+      if (pv.link) drawLinkPreview(ctx, pv.link, zoomK, st.now || 0);
+      if (pv.node) {
+        ctx.globalAlpha = 0.75;
+        const { x, y } = pv.node;
+        if (pv.node.type === 'anchor') {
+          ctx.strokeStyle = theme.c.accent; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x - 14, y + 9); ctx.lineTo(x + 14, y + 9); ctx.stroke();
+        } else drawMass(ctx, x, y, pv.node.s, 0.8);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = alpha('accent', 0.7);
+        ctx.setLineDash([3, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(x, y, 6 + (pv.node.s || 14) * 0.75, 0, 2 * Math.PI); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
     }
     // mão elástica
     if (st.hand) {
@@ -485,6 +568,60 @@
       ctx.setLineDash([]);
       ctx.fillStyle = theme.c.s2;
       ctx.beginPath(); ctx.arc(h.x1, h.y1, 4.5, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+
+  function drawMass(ctx, x, y, s, shadow) {
+    ctx.save();
+    if (shadow) {
+      ctx.shadowColor = alpha('ink', 0.22);
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 3;
+    }
+    const g = ctx.createLinearGradient(x - s / 2, y - s / 2, x + s / 2, y + s / 2);
+    g.addColorStop(0, theme.c['mass-hi']);
+    g.addColorStop(1, theme.c.mass);
+    ctx.fillStyle = g;
+    roundRect(ctx, x - s / 2, y - s / 2, s, s, Math.min(6, s / 4));
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* Ligação em construção desenhada como a peça real (mola, amortecedor ou ambos). */
+  function drawLinkPreview(ctx, L, zoomK, now) {
+    const { ax, ay, bx, by, type } = L;
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 4) return;
+    const nx = -(by - ay) / len, ny = (bx - ax) / len;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = theme.c.accent;
+    const coils = Math.max(3, Math.min(9, Math.round(len / 16)));
+    if (type === 'spring') drawSpring(ctx, ax, ay, bx, by, 7 * zoomK, coils);
+    else if (type === 'damper') drawDamper(ctx, ax, ay, bx, by, len, 7 * zoomK);
+    else {
+      drawSpring(ctx, ax + nx * 9, ay + ny * 9, bx + nx * 9, by + ny * 9, 6 * zoomK, coils);
+      drawDamper(ctx, ax - nx * 9, ay - ny * 9, bx - nx * 9, by - ny * 9, len, 6 * zoomK);
+    }
+    // alvo: anel que "puxa" a ponta
+    ctx.lineWidth = 2;
+    if (L.target) {
+      const r = 15 + 2 * Math.sin(now / 120);
+      ctx.strokeStyle = theme.c.accent;
+      ctx.beginPath(); ctx.arc(bx, by, r, 0, 2 * Math.PI); ctx.stroke();
+      ctx.fillStyle = alpha('accent', 0.12);
+      ctx.fill();
+    } else if (L.newMass) {
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = alpha('accent', 0.8);
+      roundRect(ctx, bx - 11, by - 11, 22, 22, 5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (L.targetA) {
+      ctx.strokeStyle = theme.c.accent;
+      ctx.beginPath(); ctx.arc(ax, ay, 15, 0, 2 * Math.PI); ctx.stroke();
     }
   }
 
@@ -517,5 +654,5 @@
     }
   }
 
-  Vib.render = { View, theme, readTheme, drawScene, hitNode, hitElement, elementOffsets, massSize, mix, alpha, niceStep };
+  Vib.render = { View, theme, readTheme, drawScene, hitNode, hitElement, elementOffsets, massSize, mix, alpha, niceStep, knobPos, hitKnob };
 })(typeof window !== 'undefined' ? window : globalThis);
