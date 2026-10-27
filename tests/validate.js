@@ -1,7 +1,7 @@
 /* Validação do núcleo contra soluções analíticas.
  * Uso: node tests/validate.js */
 'use strict';
-for (const f of ['linalg', 'model', 'physics', 'analysis', 'presets']) require('../js/' + f + '.js');
+for (const f of ['linalg', 'model', 'physics', 'analysis', 'chain', 'presets']) require('../js/' + f + '.js');
 const Vib = globalThis.Vib;
 const TAU = 2 * Math.PI;
 
@@ -184,6 +184,29 @@ function run(s, T, sample) {
   const s2 = Vib.Scene.deserialize(JSON.parse(JSON.stringify(s.serialize())));
   const a1 = Vib.analysis.modal(s, Vib.analysis.positions(s)), a2 = Vib.analysis.modal(s2, Vib.analysis.positions(s2));
   check('serialização preserva modos', a2.modes[1].f, a1.modes[1].f, 1e-12);
+}
+
+
+// 14) Montador em cadeia: matrizes e explicação batem com a análise modal
+{
+  const cfg = { orient: 'h', end: 'wall', masses: [{ m: 1 }, { m: 2 }, { m: 1.5 }], links: [100, 40, 60, 80].map(k => ({ spring: true, k, damper: false, c: 0 })), excite: { type: 'initial', mass: 0, amp: 0.05 } };
+  const { scene } = Vib.chain.build(cfg);
+  const an = Vib.analysis.modal(scene, Vib.analysis.positions(scene));
+  const { M, K } = Vib.chain.matrices(cfg);
+  // autovalores de M⁻¹K da cadeia 1D (via a mesma rotina simétrica)
+  const D = M.map((r, i) => 1 / Math.sqrt(r[i]));
+  const A = K.map((r, i) => r.map((v, j) => v * D[i] * D[j]));
+  const lam = Vib.linalg.symEig(A).values;
+  lam.forEach((l, i) => check(`cadeia 3 GDL: f${i + 1} (matriz K da cadeia × análise 2D)`, an.modes[i].f, Math.sqrt(l) / TAU, 1e-9));
+  const one = Vib.chain.explain({ orient: 'h', end: 'free', masses: [{ m: 4 }], links: [{ spring: true, k: 100, damper: true, c: 4 }], excite: { type: 'initial', mass: 0, amp: 0.1 } }, null);
+  const fnLine = one.lines.find(l => l.expr.startsWith('fn'));
+  check('explicação 1 GDL: fn = √(k/m)/2π', parseFloat(fnLine.value.replace(',', '.')), 5 / TAU, 1e-3);
+  // atualização no lugar mantém a topologia
+  const cfg2 = JSON.parse(JSON.stringify(scene.chain.cfg));
+  cfg2.links[1].k = 55;
+  const okUpd = Vib.chain.update(scene, cfg2);
+  if (!okUpd || scene.get(scene.chain.ids.springs[1]).k !== 55) { fails++; console.log('FALHA atualização no lugar'); }
+  else console.log('ok   montador: atualização de k no lugar, sem reconstruir');
 }
 
 console.log(fails ? `\n${fails} verificação(ões) falharam.` : '\nTodas as verificações passaram.');

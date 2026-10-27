@@ -211,33 +211,185 @@
   }
 
   /* ---------- aba Sistema ---------- */
+  /* ---------- aba Montar ---------- */
+  function numField(id, value, unit, onval, o = {}) {
+    const input = h('input', { type: 'text', inputmode: 'decimal', id, autocomplete: 'off', spellcheck: 'false', disabled: o.disabled || null, 'aria-label': o.label || unit });
+    input.value = fmtIn(value);
+    input.addEventListener('input', () => {
+      const v = parseNum(input.value);
+      if (v === null || (o.valid && !o.valid(v))) { input.setAttribute('aria-invalid', 'true'); return; }
+      input.removeAttribute('aria-invalid');
+      onval(v);
+    });
+    input.addEventListener('change', () => { input.removeAttribute('aria-invalid'); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+    return h('span', { class: 'num num-sm' + (o.disabled ? ' off' : '') }, input, h('span', { class: 'unit' }, unit));
+  }
+
+  const ORIENT_ICON = {
+    h: '<svg viewBox="0 0 48 24"><path d="M4 4v16M4 8l-2 2M4 13l-2 2M4 18l-2 2M4 12h4l2-5 3 10 3-10 3 10 2-5h3"/><rect x="24" y="6" width="12" height="12" rx="2"/><path d="M20 20h22"/></svg>',
+    hang: '<svg viewBox="0 0 48 24"><path d="M14 2h20M18 2l-2-2M24 2l-2-2M30 2l-2-2M24 2v2l-4 2 8 2-8 2 8 2-4 2v1"/><rect x="18" y="15" width="12" height="8" rx="2"/></svg>',
+    stand: '<svg viewBox="0 0 48 24"><path d="M14 23h20M24 23v-2l-4-2 8-2-8-2 8-2-4-2v-1"/><rect x="18" y="1" width="12" height="8" rx="2"/><path d="M8 18l3-3 3 3M34 18l3-3 3 3"/></svg>',
+  };
+
+  function renderBuilder(box) {
+    const app = V.app, s = app.scene;
+    const cfg = V.chain.sync(s) || V.chain.defaults();
+    const edit = (fn, structural) => app.chainEdit(fn, structural);
+    const n = cfg.masses.length, horiz = cfg.orient === 'h';
+    const baseName = { h: 'parede', hang: 'teto', stand: 'base' }[cfg.orient];
+
+    box.append(sec(
+      h('div', { class: 'guide' },
+        h('span', { class: 'gstep' }, h('b', {}, '1'), 'Monte'),
+        h('span', { class: 'gstep' }, h('b', {}, '2'), 'Simule'),
+        h('span', { class: 'gstep' }, h('b', {}, '3'), 'Observe')),
+      s.meta && s.meta.title ? h('p', { class: 'note' }, h('b', {}, s.meta.title), s.meta.text ? ' — ' + s.meta.text : '') : null));
+
+    // 1 · forma
+    const orient = h('div', { class: 'orient' });
+    [['h', 'Horizontal', 'massas sobre um trilho'], ['hang', 'Pendurado', 'preso no teto, com gravidade'], ['stand', 'Sobre a base', 'apoiado no chão, com gravidade']].forEach(([v, t, sub]) => {
+      const b = h('button', { type: 'button', class: 'ocard', 'aria-pressed': String(cfg.orient === v), onclick: () => edit(c => { c.orient = v; }, true) });
+      const ic = document.createElement('span'); ic.className = 'oicon'; ic.innerHTML = ORIENT_ICON[v];
+      b.append(ic, h('b', {}, t), h('small', {}, sub));
+      orient.append(b);
+    });
+    box.append(sec(h('h3', {}, '1 · Forma do sistema'), orient));
+
+    // 2 · massas
+    box.append(sec(h('h3', {}, '2 · Quantas massas'),
+      h('div', { class: 'row2' },
+        h('div', { class: 'stepper' },
+          h('button', { type: 'button', class: 'btn btn-icon', 'aria-label': 'Menos uma massa', disabled: n <= 1 || null, onclick: () => edit(c => { c.masses.pop(); }, true) }, '−'),
+          h('span', { class: 'stepv' }, h('b', {}, String(n)), n === 1 ? ' massa' : ' massas'),
+          h('button', { type: 'button', class: 'btn btn-icon', 'aria-label': 'Mais uma massa', disabled: n >= 8 || null, onclick: () => edit(c => { c.masses.push({ m: c.masses[c.masses.length - 1].m }); }, true) }, '+')),
+        seg([['free', 'Última massa livre'], ['wall', `Presa ${horiz ? 'à parede' : cfg.orient === 'hang' ? 'embaixo' : 'em cima'}`]], cfg.end, v => edit(c => { c.end = v; }, true))),
+      h('p', { class: 'note' }, `${n} ${n === 1 ? 'massa' : 'massas'} = ${n} ${n === 1 ? 'grau' : 'graus'} de liberdade: cada massa só se move ${horiz ? 'na horizontal' : 'na vertical'}.`)));
+
+    // 3 · cadeia
+    const list = h('div', { class: 'chainlist' });
+    const nodeRow = (label, cls) => h('div', { class: 'cl-node ' + cls }, h('span', { class: 'cl-dot' }), label);
+    list.append(nodeRow(baseName, 'wall'));
+    cfg.links.forEach((l, j) => {
+      const id = 'cb-' + j;
+      list.append(h('div', { class: 'cl-link' },
+        h('span', { class: 'cl-tag' }, `ligação ${j + 1}`),
+        h('div', { class: 'cl-parts' },
+          h('label', { class: 'cl-part' + (l.spring ? ' on' : ''), for: id + '-s' },
+            h('input', { type: 'checkbox', id: id + '-s', checked: l.spring || null, onchange: e => edit(c => { c.links[j].spring = e.target.checked; }, true) }),
+            'mola', h('i', {}, 'k' + (j + 1))),
+          numField(id + '-k', l.k, 'N/m', v => edit(c => { c.links[j].k = v; }), { disabled: !l.spring, valid: v => v >= 0, label: `rigidez k${j + 1}` })),
+        h('div', { class: 'cl-parts' },
+          h('label', { class: 'cl-part' + (l.damper ? ' on' : ''), for: id + '-d' },
+            h('input', { type: 'checkbox', id: id + '-d', checked: l.damper || null, onchange: e => edit(c => { c.links[j].damper = e.target.checked; }, true) }),
+            'amortecedor', h('i', {}, 'c' + (j + 1))),
+          numField(id + '-c', l.c, 'N·s/m', v => edit(c => { c.links[j].c = v; }), { disabled: !l.damper, valid: v => v >= 0, label: `amortecimento c${j + 1}` }))));
+      if (j < n) {
+        list.append(h('div', { class: 'cl-node mass' }, h('span', { class: 'cl-dot' }), h('b', {}, 'm' + (j + 1)),
+          numField('cb-m-' + j, cfg.masses[j].m, 'kg', v => edit(c => { c.masses[j].m = v; }), { valid: v => v > 0, label: `massa m${j + 1}` })));
+      }
+    });
+    if (cfg.end === 'wall') list.append(nodeRow(baseName + ' 2', 'wall'));
+    box.append(sec(h('h3', {}, '3 · Peças, na ordem da cadeia'), list));
+
+    // 4 · excitação
+    const e = cfg.excite;
+    const ex = sec(h('h3', {}, '4 · O que faz o sistema vibrar'),
+      seg([['initial', 'Soltar deslocada'], ['force', 'Força'], ['sweep', 'Varredura'], ['base', 'Base vibrando']], e.type, v => edit(c => {
+        c.excite.type = v;
+        if (v === 'initial') c.excite.amp = 0.1;
+        if (v === 'force' || v === 'sweep') { c.excite.amp = 1; c.excite.f = v === 'sweep' ? 0.3 : suggestedFreq(); c.excite.f1 = round3(suggestedFreq() * 2.5); c.excite.T = 60; }
+        if (v === 'base') { c.excite.amp = 0.02; c.excite.f = suggestedFreq(); }
+      }, true)));
+    const fields = h('div', { class: 'exfields' });
+    if (e.type !== 'base' && n > 1) {
+      fields.append(h('div', { class: 'exrow' }, h('span', {}, e.type === 'initial' ? 'Massa deslocada' : 'Força aplicada em'),
+        seg(cfg.masses.map((q, i) => [i, 'm' + (i + 1)]), e.mass, v => edit(c => { c.excite.mass = v; }, true))));
+    }
+    if (e.type === 'initial') {
+      fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Deslocamento inicial x₀'),
+        numField('cb-x0', e.amp * 1000, 'mm', v => edit(c => { c.excite.amp = v / 1000; }, true), { valid: v => Math.abs(v) <= 2000 })));
+    } else if (e.type === 'force' || e.type === 'sweep') {
+      fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Amplitude F₀'), numField('cb-F0', e.amp, 'N', v => edit(c => { c.excite.amp = v; }), { valid: v => v >= 0 })));
+      if (e.type === 'force') fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Frequência f'), numField('cb-f', e.f, 'Hz', v => edit(c => { c.excite.f = v; }), { valid: v => v >= 0 })));
+      else {
+        fields.append(h('div', { class: 'exrow' }, h('span', {}, 'De f₁'), numField('cb-f', e.f, 'Hz', v => edit(c => { c.excite.f = v; }), { valid: v => v >= 0 })));
+        fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Até f₂'), numField('cb-f1', e.f1, 'Hz', v => edit(c => { c.excite.f1 = v; }), { valid: v => v >= 0 })));
+        fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Em'), numField('cb-T', e.T, 's', v => edit(c => { c.excite.T = v; }), { valid: v => v > 0 })));
+      }
+    } else if (e.type === 'base') {
+      fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Amplitude da base A'), numField('cb-A', e.amp * 1000, 'mm', v => edit(c => { c.excite.amp = v / 1000; }), { valid: v => v >= 0 })));
+      fields.append(h('div', { class: 'exrow' }, h('span', {}, 'Frequência f'), numField('cb-bf', e.f, 'Hz', v => edit(c => { c.excite.f = v; }), { valid: v => v >= 0 })));
+    }
+    ex.append(fields);
+    box.append(ex);
+
+    box.append(sec(h('button', { type: 'button', class: 'btn btn-primary btn-big', onclick: () => app.simulateFromStart() },
+      h('span', { class: 'play-ic' }), 'Simular desde o início')));
+
+    const exp = h('div', { class: 'sec', id: 'cbExplain' });
+    renderExplain(exp);
+    box.append(exp);
+  }
+
+  function renderExplain(box) {
+    const app = V.app, s = app.scene;
+    if (!s.chain) return;
+    box.replaceChildren();
+    const x = V.chain.explain(s.chain.cfg, s);
+    box.append(h('h3', {}, 'Entenda o sistema'));
+    if (x.lines.length) {
+      box.append(h('div', { class: 'formulas' }, x.lines.map(l => h('div', { class: 'fx' },
+        l.label ? h('span', { class: 'fx-l' }, l.label) : null,
+        h('span', { class: 'fx-e' }, l.expr),
+        h('span', { class: 'fx-v' }, '= ' + l.value)))));
+    }
+    for (const t of x.notes) box.append(h('p', { class: 'note' }, t));
+    if (x.matrices) {
+      const mat = (name, A, unit) => h('div', { class: 'mat' }, h('span', { class: 'mat-n' }, name + ' ='),
+        h('table', {}, A.map(r => h('tr', {}, r.map(v => h('td', {}, v === 0 ? '0' : fmt(v, 4)))))), h('span', { class: 'mat-u' }, unit));
+      box.append(h('div', { class: 'mats' }, mat('M', x.matrices.M, 'kg'), mat('K', x.matrices.K, 'N/m'), x.matrices.C ? mat('C', x.matrices.C, 'N·s/m') : null));
+    }
+  }
+
   let defaultsOpen = false;
   function renderScene(box) {
     const app = V.app, s = app.scene, meta = s.meta;
-    const top = sec(head(meta ? meta.title : 'Sistema personalizado', null));
-    if (meta && meta.text) top.append(h('p', { class: 'lead' }, meta.text));
-    if (meta && meta.theory) top.append(h('p', { class: 'theory' }, meta.theory));
-    if (!meta) top.append(h('p', { class: 'note' }, 'Sistema montado ou importado por você. Use as ferramentas à esquerda para acrescentar peças.'));
-    box.append(top);
+    if (s.chain && app.mode !== 'build') renderBuilder(box);
+    else {
+      const top = sec(head(meta && meta.title ? meta.title : 'Sistema desenhado à mão', 'livre'));
+      if (meta && meta.text) top.append(h('p', { class: 'lead' }, meta.text));
+      if (meta && meta.theory) top.append(h('p', { class: 'theory' }, meta.theory));
+      top.append(h('p', { class: 'note' }, 'Este sistema tem geometria livre em 2D, então o montador em cadeia não o representa. Edite clicando nas peças ou no desenho livre, ou comece um sistema novo pelo montador.'));
+      top.append(h('div', { class: 'row-actions' },
+        h('button', { type: 'button', class: 'btn btn-primary', onclick: () => app.newChain() }, 'Novo sistema pelo montador'),
+        app.mode === 'build'
+          ? h('button', { type: 'button', class: 'btn', onclick: () => app.setMode('test') }, 'Concluir desenho livre')
+          : h('button', { type: 'button', class: 'btn', onclick: () => app.setMode('build') }, 'Editar no desenho')));
+      box.append(top);
+    }
 
     const free = s.nodes.filter(n => !n.fixed);
     const cnt = t => s.elements.filter(e => e.type === t).length;
-    box.append(sec(h('h3', {}, 'Resumo'), h('div', { class: 'stats' },
-      [[free.length, 'massas'], [s.nodes.length - free.length, 'apoios'], [s.freeDofCount(), 'GDL'],
-        [cnt('spring'), 'molas'], [cnt('damper'), 'amortecedores'], [fmt(free.reduce((a, n) => a + n.m, 0)), 'kg no total']]
-        .map(([v, k]) => h('div', { class: 'stat' }, h('b', {}, String(v)), h('span', {}, k))))));
-
-    const env = sec(h('h3', {}, 'Ambiente'),
-      h('div', { class: 'checks' }, check('env-g', 'gravidade ligada', s.gravity, v => { app.pushHistory(); s.gravity = v; app.changed(false); render(); })));
-    if (s.gravity) env.append(params(param({ key: 'g', sym: 'g', label: 'aceleração da gravidade', unit: 'm/s²', min: 0, max: 30, log: false, get: () => s.g, set: v => { s.g = v; }, valid: v => v >= 0 })));
-    box.append(env);
-
     const d = app.defaults;
     box.append(sec(h('details', { class: 'defaults', open: defaultsOpen || null, ontoggle: e => { defaultsOpen = e.target.open; } },
-      h('summary', {}, h('span', {}, 'Valores das novas peças: ', h('b', {}, `${fmt(d.m)} kg · ${fmt(d.k)} N/m · ${fmt(d.c)} N·s/m`))),
-      param({ key: 'dm', sym: 'm', label: 'massa', unit: 'kg', min: 0.01, max: 100, get: () => d.m, set: v => { d.m = v; }, valid: v => v > 0 }),
-      param({ key: 'dk', sym: 'k', label: 'rigidez', unit: 'N/m', min: 0.1, max: 1e5, get: () => d.k, set: v => { d.k = v; }, valid: v => v >= 0 }),
-      param({ key: 'dc', sym: 'c', label: 'amortecimento', unit: 'N·s/m', min: 0.001, max: 2000, get: () => d.c, set: v => { d.c = v; }, valid: v => v >= 0 }))));
+      h('summary', {}, h('span', {}, 'Mais opções: gravidade, desenho livre, resumo')),
+      h('div', { class: 'more' },
+        h('div', { class: 'checks' }, check('env-g', 'gravidade ligada', s.gravity, v => { app.pushHistory(); s.gravity = v; app.changed(false); render(); })),
+        s.gravity ? param({ key: 'g', sym: 'g', label: 'aceleração da gravidade', unit: 'm/s²', min: 0, max: 30, log: false, get: () => s.g, set: v => { s.g = v; }, valid: v => v >= 0 }) : null,
+        h('div', { class: 'stats' },
+          [[free.length, 'massas'], [s.nodes.length - free.length, 'apoios'], [s.freeDofCount(), 'GDL'],
+            [cnt('spring'), 'molas'], [cnt('damper'), 'amortecedores'], [fmt(free.reduce((a, n) => a + n.m, 0)), 'kg no total']]
+            .map(([v, k]) => h('div', { class: 'stat' }, h('b', {}, String(v)), h('span', {}, k)))),
+        h('h3', {}, 'Desenho livre (avançado)'),
+        h('p', { class: 'note' }, 'Para sistemas em 2D (treliças, pêndulos, malhas): arraste peças de uma bandeja para o desenho e ligue nós puxando o ⊕. Ao entrar, o montador em cadeia deixa de controlar este sistema.'),
+        app.mode === 'build'
+          ? h('button', { type: 'button', class: 'btn', onclick: () => app.setMode('test') }, 'Concluir desenho livre')
+          : h('button', { type: 'button', class: 'btn', onclick: () => app.setMode('build') }, 'Editar no desenho livre'),
+        h('h3', {}, 'Valores das peças criadas no desenho livre'),
+        param({ key: 'dm', sym: 'm', label: 'massa', unit: 'kg', min: 0.01, max: 100, get: () => d.m, set: v => { d.m = v; }, valid: v => v > 0 }),
+        param({ key: 'dk', sym: 'k', label: 'rigidez', unit: 'N/m', min: 0.1, max: 1e5, get: () => d.k, set: v => { d.k = v; }, valid: v => v >= 0 }),
+        param({ key: 'dc', sym: 'c', label: 'amortecimento', unit: 'N·s/m', min: 0.001, max: 2000, get: () => d.c, set: v => { d.c = v; }, valid: v => v >= 0 })))));
   }
 
   /* ---------- abas ---------- */
@@ -357,5 +509,10 @@
     }
   }
 
-  V.inspector = { render, renderModal, liveUpdate, setTab, h };
+  function refreshExplain() {
+    const el = document.getElementById('cbExplain');
+    if (el) renderExplain(el);
+  }
+
+  V.inspector = { render, renderModal, liveUpdate, setTab, refreshExplain, h };
 })();

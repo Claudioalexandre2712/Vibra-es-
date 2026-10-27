@@ -88,7 +88,7 @@
   }
 
   function massSize(n, view) {
-    return Math.min(56, Math.max(13, 0.075 * Math.cbrt(n.m) * view.scale));
+    return Math.min(56, Math.max(16, 0.075 * Math.cbrt(n.m) * view.scale));
   }
 
   /* Alça de ligação: pequeno ⊕ no canto superior direito do nó. */

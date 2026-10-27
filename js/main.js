@@ -100,7 +100,9 @@
 
   /* ---------- alterações e análise ---------- */
   let anTimer = null;
+  let applyingChain = false;
   app.changed = function (structural) {
+    if (structural && !applyingChain && app.scene.chain) dropChain();
     app.scene.touch(!!structural);
     clearTimeout(anTimer);
     anTimer = setTimeout(runAnalysis, 140);
@@ -135,10 +137,71 @@
       M.msg = 'Falha na análise: ' + err.message;
     }
     V.inspector.renderModal();
+    V.inspector.refreshExplain();
   }
+
+  /* ---------- montador em cadeia ---------- */
+  function dropChain() {
+    const s = app.scene;
+    s.chain = null;
+    if (s.meta) { s.meta.chain = null; s.meta.chainIds = null; }
+    setTimeout(() => V.inspector.render(), 0);
+  }
+
+  /* Monta a cena a partir da configuração do montador. */
+  app.loadChain = function (cfg, o = {}) {
+    const c = V.chain.normalize(cfg);
+    const { scene: s, perturb } = V.chain.build(c);
+    s.meta = Object.assign({}, o.meta || {}, { chain: c, chainIds: s.chain.ids });
+    if (!o.meta) s.meta.title = null;
+    const eq = V.analysis.equilibrium(s);
+    if (eq.ok) s.nodes.forEach((n, i) => { if (!n.fixed) { n.x = eq.P[2 * i]; n.y = eq.P[2 * i + 1]; } });
+    if (perturb) perturb(s);
+    const wasRunning = app.running;
+    loadScene(s, { instant: o.instant, keepTab: true });
+    if (o.select !== undefined) $('#selPreset').value = o.select;
+    setRunning(o.run !== undefined ? o.run : wasRunning);
+  };
+
+  /* Edição feita pelo formulário: muda valores no lugar ou reconstrói. */
+  app.chainEdit = function (fn, structural) {
+    const s = app.scene;
+    if (!s.chain) return;
+    const cfg = V.chain.normalize(V.chain.sync(s));
+    app.beginEdit();
+    fn(cfg);
+    const c = V.chain.normalize(cfg);
+    if (!structural && V.chain.update(s, c)) {
+      s.meta.chain = c;
+      applyingChain = true;
+      app.changed(false);
+      applyingChain = false;
+      V.inspector.refreshExplain();
+      return;
+    }
+    app.loadChain(c, { meta: s.meta && s.meta.title ? { title: s.meta.title, text: s.meta.text, theory: s.meta.theory, id: s.meta.id } : null });
+    V.inspector.render();
+  };
+
+  app.newChain = function () {
+    app.pushHistory();
+    setMode('test');
+    app.loadChain(V.chain.defaults(), { select: 'meu', run: true });
+    V.inspector.setTab('sys');
+  };
+
+  app.simulateFromStart = function () {
+    setMode('test');
+    reset();
+    setRunning(true);
+  };
 
   /* ---------- carga de sistemas ---------- */
   function loadScene(s, o = {}) {
+    if (!s.chain && s.meta && s.meta.chain && s.meta.chainIds && s.meta.chainIds.masses.every(id => s.get(id))) {
+      const cfg = V.chain.normalize(s.meta.chain);
+      s.chain = { cfg, ids: s.meta.chainIds, sig: V.chain.signature(cfg) };
+    }
     app.scene = s;
     if (!app.engine) app.engine = new V.physics.Engine(s); else app.engine.setScene(s);
     app.engine.onSample = V.dock.onSample;
@@ -160,7 +223,7 @@
     V.dock.observe(null);
     V.dock.observe(first ? first.id : null);
     V.inspector.render();
-    V.inspector.setTab('sys');
+    if (!o.keepTab) V.inspector.setTab('sys');
     dirty = true;
   }
 
@@ -168,6 +231,14 @@
     const p = V.presets.find(q => q.id === id);
     if (!p) return;
     if (app.scene && !o.initial) app.pushHistory();
+    if (p.chain) {
+      setMode('test');
+      app.loadChain(p.chain, { meta: { id: p.id, title: p.title, text: p.text, theory: p.theory }, instant: o.initial, run: true });
+      setToggle('labels', p.labels !== false);
+      $('#selPreset').value = id;
+      V.inspector.setTab('sys');
+      return;
+    }
     const s = p.build();
     s.meta = { id: p.id, title: p.title, text: p.text, theory: p.theory };
     const eq = V.analysis.equilibrium(s);
@@ -267,10 +338,16 @@
     }
     app.mode = m;
     stage.dataset.mode = m;
-    document.querySelectorAll('.mswitch').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === m)));
+    $('#chipEdit').hidden = m !== 'build';
+    if (m === 'build' && app.scene.chain) {
+      dropChain();
+      toast('Desenho livre: arraste peças da bandeja e ligue nós puxando o ⊕. O montador em cadeia não controla mais este sistema.', 6000);
+    }
     updateTray();
+    V.inspector.render();
     dirty = true;
   }
+  app.setMode = m => setMode(m);
 
   function updateTray() {
     document.querySelectorAll('.part').forEach(b => {
@@ -280,14 +357,14 @@
   }
 
   /* ---------- seleção ---------- */
-  app.select = function (sel) {
+  app.select = function (sel, o = {}) {
     app.selection = sel;
     app.trail = [];
     if (sel && sel.kind === 'node') {
       const n = app.scene.get(sel.id);
       if (n && !n.fixed) V.dock.observe(n.id);
     }
-    V.inspector.render(true);
+    V.inspector.render(o.follow !== false);
     pillKey = '';
     dirty = true;
   };
@@ -432,9 +509,10 @@
     } else if (ptr && ptr.mode === 'connect') h = `Solte sobre um nó para ligar com ${lt}, ou no vazio para criar uma massa nova.`;
     else if (app.linkFrom) h = `Clique no nó de destino da <b>${lt}</b>, ou no vazio para criar uma massa ligada. <b>Esc</b> cancela.`;
     else if (app.placing) h = `Clique para colocar ${app.placing === 'mass' ? 'massas' : 'apoios'}. <b>Esc</b> termina.`;
-    else if (app.mode === 'build') h = `Arraste peças da bandeja · puxe o <b>⊕</b> de um nó para ligar (${lt}) · duplo clique cria massa.`;
-    else if (app.running) h = 'Arraste uma massa para puxá-la e solte. <b>Montar</b> volta à prancheta.';
-    else h = 'Arraste uma massa para dar o deslocamento inicial e clique em <b>Executar</b>.';
+    else if (app.mode === 'build') h = `Desenho livre: arraste peças da bandeja · puxe o <b>⊕</b> de um nó para ligar (${lt}) · duplo clique cria massa.`;
+    else if (app.running) h = 'Puxe uma massa com o mouse e solte para ver a vibração.';
+    else if (app.engine.t === 0) h = 'Monte o sistema no painel <b>Montar</b> e clique em <b>Executar</b>.';
+    else h = 'Pausado. <b>Executar</b> continua; <b>↺</b> volta ao início.';
     if (h !== hintTxt) { hintTxt = h; el.innerHTML = h; }
   }
 
@@ -515,9 +593,9 @@
       return;
     }
 
-    // ensaio
+    // ensaio: puxar uma massa não tira o painel do montador
     if (n) {
-      app.select({ kind: 'node', id: n.id });
+      app.select({ kind: 'node', id: n.id }, { follow: false });
       if (!n.fixed) {
         if (!app.running) app.pushHistory();
         ptr = { mode: 'drag', id: n.id, wx: view.wx(p.x), wy: view.wy(p.y), ox: n.x - view.wx(p.x), oy: n.y - view.wy(p.y) };
@@ -817,7 +895,7 @@
   function updatePill() {
     const sel = app.selection, s = app.scene;
     const item = sel && s.get(sel.id);
-    const hide = !item || (ptr && ptr.mode !== 'pan') || (tray && tray.active) || app.linkFrom;
+    const hide = app.mode !== 'build' || !item || (ptr && ptr.mode !== 'pan') || (tray && tray.active) || app.linkFrom;
     if (hide) { if (!pill.hidden) pill.hidden = true; pillKey = ''; return; }
     const key = sel.id + ':' + (item.fixed ? 1 : 0) + (item.lockX ? 1 : 0) + (item.lockY ? 1 : 0) + ':' + (item.type || '') + ':' + s.version;
     if (key !== pillKey) {
@@ -881,8 +959,8 @@
       return;
     }
     if (k === 'b') setMode(app.mode === 'build' ? 'test' : 'build');
-    else if (k === 'm' || k === 'a') clickPart(k === 'm' ? 'mass' : 'anchor');
-    else if (k === 'k' || k === 'c' || k === 'p') { setMode('build'); app.linkType = { k: 'spring', c: 'damper', p: 'kc' }[k]; updateTray(); dirty = true; }
+    else if (app.mode === 'build' && (k === 'm' || k === 'a')) clickPart(k === 'm' ? 'mass' : 'anchor');
+    else if (app.mode === 'build' && (k === 'k' || k === 'c' || k === 'p')) { app.linkType = { k: 'spring', c: 'damper', p: 'kc' }[k]; updateTray(); dirty = true; }
     else if (k === 'r') reset();
     else if (k === '.') step();
     else if (k === 'f') fitView(true);
@@ -919,13 +997,13 @@
   }
 
   const sel = $('#selPreset');
+  sel.append(new Option('Meu sistema (montador)', 'meu'));
   for (const p of V.presets) sel.append(new Option(p.title, p.id));
-  sel.addEventListener('change', () => loadPreset(sel.value));
+  sel.addEventListener('change', () => { if (sel.value === 'meu') app.newChain(); else loadPreset(sel.value); });
   $('#btnPlay').addEventListener('click', play);
   $('#btnGo').addEventListener('click', play);
   $('#btnStep').addEventListener('click', step);
   $('#btnReset').addEventListener('click', reset);
-  document.querySelectorAll('.mswitch').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
   document.querySelectorAll('#speedSeg button').forEach(b => b.addEventListener('click', () => {
     app.timeScale = +b.dataset.speed;
     document.querySelectorAll('#speedSeg button').forEach(q => q.setAttribute('aria-pressed', String(q === b)));
@@ -1234,7 +1312,7 @@
       }
     }
   } catch (err) { restored = false; }
-  if (!restored) loadPreset('absorvedor', { initial: true });
+  if (!restored) app.loadChain(V.chain.defaults(), { instant: true, run: true, select: 'meu' });
   resize();
   requestAnimationFrame(t => { last = t; frame(t); });
 })();

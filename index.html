@@ -49,20 +49,13 @@
   <!-- ===== área de montagem ===== -->
   <main class="stage card" id="stage" data-mode="test">
     <div class="stage-head">
-      <div class="modes-switch" role="tablist" aria-label="Modo">
-        <button role="tab" class="mswitch" data-mode="build" aria-selected="false" title="Montar (B): construir o sistema na prancheta">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3"/></svg>Montar
-        </button>
-        <button role="tab" class="mswitch" data-mode="test" aria-selected="true" title="Ensaiar (B): simular e interagir">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2-5 3 10 3-10 3 10 2-5h2"/></svg>Ensaiar
-        </button>
-      </div>
       <div class="clock" title="Tempo simulado">
         <span class="clock-label">t</span><span id="hudTime">0,000</span><span class="clock-unit">s</span>
       </div>
       <p class="hint" id="hint" aria-live="polite"></p>
       <div class="stage-chips">
         <span class="chip chip-mode" id="hudMode" hidden></span>
+        <span class="chip chip-edit" id="chipEdit" hidden>desenho livre</span>
         <span class="chip" id="chipEnergy" title="Erro do balanço de energia: |T + V + dissipada − trabalho externo − E₀| dividido pela energia de vibração. Próximo de zero = integração confiável.">balanço —</span>
         <button class="chip chip-btn" id="chipGravity" title="Ligar ou desligar a gravidade">g = 9,81 m/s²</button>
       </div>
@@ -97,8 +90,8 @@
         <label class="auto-link" for="tgAutoLink" title="Ao soltar uma massa ou apoio perto de um nó, ligar automaticamente com a peça de ligação escolhida">
           <input type="checkbox" id="tgAutoLink" checked> ligar ao soltar
         </label>
-        <button class="btn btn-primary btn-go" id="btnGo" title="Ir para o ensaio e executar (Espaço)">
-          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg><span>Ensaiar</span>
+        <button class="btn btn-primary btn-go" id="btnGo" title="Sair do desenho livre e simular (Espaço)">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span>Concluir e simular</span>
         </button>
       </div>
 
@@ -163,8 +156,8 @@
   <!-- ===== inspetor ===== -->
   <aside class="inspector card" aria-label="Propriedades e análise">
     <div class="insp-tabs" role="tablist" aria-label="Painel">
-      <button role="tab" class="itab" data-itab="sys" aria-selected="true">Sistema</button>
-      <button role="tab" class="itab" data-itab="sel" aria-selected="false">Seleção <span class="badge" id="selBadge" hidden></span></button>
+      <button role="tab" class="itab" data-itab="sys" aria-selected="true">Montar</button>
+      <button role="tab" class="itab" data-itab="sel" aria-selected="false">Peça <span class="badge" id="selBadge" hidden></span></button>
       <button role="tab" class="itab" data-itab="modes" aria-selected="false">Modos <span class="badge" id="modesBadge" hidden></span></button>
     </div>
     <div class="insp-body">
@@ -199,21 +192,19 @@
       <div>
         <h3>1 · Montar</h3>
         <ul>
-          <li>Clique em <b>Montar</b> (ou tecle <kbd>B</kbd>). A prancheta pausa a simulação.</li>
-          <li><b>Arraste</b> Massa ou Apoio da bandeja para a prancheta. Solto perto de um nó, já entra ligado (desligue “ligar ao soltar” se preferir).</li>
-          <li><b>Arraste</b> Mola, Amortecedor ou Mola + amort. para <b>entre dois nós</b>: a peça se encaixa entre eles.</li>
-          <li>Passe o mouse sobre um nó e <b>puxe o ⊕</b>: sai uma ligação do tipo escolhido na bandeja. Solte em outro nó ou no vazio (cria uma massa).</li>
-          <li><b>Duplo clique</b> no vazio cria uma massa; com <kbd>Shift</kbd>, um apoio.</li>
-          <li>Arraste um nó para mudar a geometria; as molas ligadas ficam sem tensão na nova posição.</li>
+          <li>Na aba <b>Montar</b> (painel à direita), siga os 4 passos: forma do sistema, quantas massas, molas e amortecedores de cada ligação, e o que faz o sistema vibrar.</li>
+          <li>O desenho se monta sozinho a cada mudança. Clique em <b>Simular desde o início</b>.</li>
+          <li>Logo abaixo, <b>Entenda o sistema</b> mostra as fórmulas com os seus números (ωn, fn, ζ, amplitude prevista; matrizes M e K para várias massas).</li>
+          <li>Sistemas em 2D (pórticos, pêndulos, malhas): em <b>Mais opções → Editar no desenho livre</b>.</li>
         </ul>
         <h3>2 · Ajustar</h3>
         <ul>
-          <li>Clique numa peça: aparece uma <b>barra de ações</b> junto dela (ligar, fixar, travar x/y, excluir) e a aba <b>Seleção</b> mostra todos os parâmetros.</li>
-          <li>A aba <b>Sistema</b> traz a teoria do caso, a gravidade e os valores das novas peças.</li>
+          <li>Clique numa peça no desenho: a aba <b>Peça</b> mostra todos os parâmetros dela com controles deslizantes.</li>
+
         </ul>
         <h3>3 · Interagir</h3>
         <ul>
-          <li>No modo <b>Ensaiar</b>, executando: arraste uma massa para puxá-la e solte.</li>
+          <li>Executando: arraste uma massa para puxá-la e solte.</li>
           <li>Pausado: arraste para definir o deslocamento inicial e depois execute.</li>
           <li>Arrastar o fundo move a vista; roda do mouse ou pinça aproxima.</li>
         </ul>
@@ -229,9 +220,7 @@
         <table class="keys">
           <tr><td><kbd>Espaço</kbd></td><td>executar / pausar</td></tr>
           <tr><td><kbd>R</kbd> · <kbd>.</kbd></td><td>reiniciar · avançar um quadro</td></tr>
-          <tr><td><kbd>B</kbd></td><td>alternar Montar / Ensaiar</td></tr>
-          <tr><td><kbd>M</kbd> <kbd>A</kbd></td><td>colocar massa · apoio com cliques</td></tr>
-          <tr><td><kbd>K</kbd> <kbd>C</kbd> <kbd>P</kbd></td><td>ligação: mola · amortecedor · ambos</td></tr>
+          <tr><td><kbd>B</kbd></td><td>entrar ou sair do desenho livre</td></tr>
           <tr><td><kbd>Del</kbd></td><td>excluir a peça selecionada</td></tr>
           <tr><td><kbd>Ctrl Z</kbd> / <kbd>Ctrl Shift Z</kbd></td><td>desfazer / refazer</td></tr>
           <tr><td><kbd>G</kbd> <kbd>L</kbd> <kbd>T</kbd> <kbd>F</kbd></td><td>grade · rótulos · rastro · enquadrar</td></tr>
@@ -246,6 +235,7 @@
 <script src="js/model.js"></script>
 <script src="js/physics.js"></script>
 <script src="js/analysis.js"></script>
+<script src="js/chain.js"></script>
 <script src="js/presets.js"></script>
 <script src="js/render.js"></script>
 <script src="js/charts.js"></script>

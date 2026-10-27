@@ -8,9 +8,11 @@ Funciona direto no navegador: HTML, CSS e JavaScript puros, sem build e sem depe
 
 | Área | Recursos |
 |---|---|
-| Montagem (modo **Montar**) | bandeja de peças com arrastar e soltar: massa ou apoio solto perto de um nó já entra ligado; mola/amortecedor solto entre dois nós se encaixa entre eles; alça ⊕ em cada nó para puxar uma ligação; duplo clique cria massa; barra de ações junto da peça selecionada (ligar, fixar, travar x/y, trocar tipo, acrescentar em paralelo, excluir); animações de entrada e saída; grade de 5 cm; desfazer/refazer |
+| Montagem guiada (aba **Montar**) | formulário em 4 passos, no formato dos livros: forma (horizontal, pendurado, sobre a base) → número de massas e extremidade → mola e/ou amortecedor de cada ligação com seus valores → o que faz vibrar (deslocamento inicial, força harmônica, varredura ou base vibrando). O desenho se monta sozinho; mudanças de valor não interrompem a simulação |
+| Entenda o sistema | fórmulas do caso com os números substituídos: ωn, fn, T, ζ, ωd, δst, razão r, amplitude em regime, transmissibilidade; para várias massas, matrizes M, K, C e as frequências naturais |
+| Desenho livre (avançado) | para sistemas 2D: bandeja de peças com arrastar e soltar, alça ⊕ para ligar nós, barra de ações junto da peça, duplo clique cria massa |
 | Graus de liberdade | cada massa livre em x, em y ou nos dois (trilhos); sistemas de 1 a centenas de GDL |
-| Interação (modo **Ensaiar**) | com a simulação rodando, arrastar uma massa a puxa por uma "mão" elástica; pausado, o arraste define o deslocamento inicial; voltar a Montar reinicia o sistema na condição inicial; zoom por roda/pinça com enquadramento animado |
+| Interação | com a simulação rodando, arrastar uma massa a puxa por uma "mão" elástica; pausado, o arraste define o deslocamento inicial; zoom por roda/pinça com enquadramento animado |
 | Excitações | força harmônica ou varredura de frequência (chirp) em qualquer direção; excitação de base harmônica nos apoios |
 | Molas | lineares ou não lineares (termo cúbico de Duffing, `F = k·ΔL + k₃·ΔL³`), geometria exata em 2D (grandes deslocamentos) |
 | Análise modal | equilíbrio estático por Newton–Raphson, rigidez tangente com termo geométrico `T/L`, frequências naturais, fatores de amortecimento modais, animação da forma de cada modo e botão "Excitar" para soltar o sistema num modo |
@@ -70,6 +72,7 @@ Todas as análises são linearizações em torno do equilíbrio estático; a sim
 | Oscilador forçado | amplitude de regime da FRF e da simulação |
 | Excitação de base | transmissibilidade analítica (FRF e simulação) |
 | FRF modal × direta | igualdade para `C ∝ K` |
+| Montador em cadeia | frequências da matriz K da cadeia = análise 2D; explicação 1 GDL = √(k/m)/2π |
 | Pórtico e malha | equilíbrio, modal e balanço de energia com base móvel |
 
 As frequências modais coincidem com as fórmulas até o arredondamento de máquina; as respostas no tempo ficam dentro de 10⁻⁵ (relativo) e o balanço de energia, abaixo de 10⁻⁵.
@@ -83,6 +86,7 @@ js/linalg.js        autovalores simétricos, Gauss, FFT
 js/model.js         cena: nós, elementos, serialização
 js/physics.js       motor RK4, forças, energia
 js/analysis.js      equilíbrio, modal, resposta em frequência
+js/chain.js         montador em cadeia: gera a cena e a explicação
 js/presets.js       sistemas prontos
 js/render.js        desenho da cena
 js/charts.js        gráficos
